@@ -5,9 +5,9 @@ const logger = createLogger({
     level: 'info',
     format: format.combine(
         format.timestamp({
-            format: 'YYYY-MM-DD HH:mm:ss'
+            format: 'YYYY-MM-DD HH:mm:ss',
         }),
-        format.json()
+        format.json(),
     ),
     transports: [
         new transports.Console(),
@@ -16,8 +16,8 @@ const logger = createLogger({
             dirname: 'logs',
             filename: '%DATE%.log',
             datePattern: 'YYYY-MM-DD',
-        })
-    ]
+        }),
+    ],
 });
 
 export default logger;

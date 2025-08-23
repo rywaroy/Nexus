@@ -1,15 +1,19 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import {
+    CallHandler,
+    ExecutionContext,
+    Injectable,
+    NestInterceptor,
+} from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-
 
 const transformValue = (data: any) => {
     return {
         data,
         code: 0,
         message: '请求成功',
-    }
-}
+    };
+};
 
 // 处理统一成功返回值
 @Injectable()
@@ -23,6 +27,6 @@ export class TransformReturnInterceptor implements NestInterceptor {
         //     return next.handle();
         // }
 
-        return next.handle().pipe(map(transformValue))
+        return next.handle().pipe(map(transformValue));
     }
 }

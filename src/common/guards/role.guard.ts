@@ -2,9 +2,8 @@ import {
     CanActivate,
     ExecutionContext,
     Injectable,
-    UnauthorizedException
+    UnauthorizedException,
 } from '@nestjs/common';
-
 
 export function RoleGuard(roles: string[] | string) {
     @Injectable()
@@ -16,7 +15,7 @@ export function RoleGuard(roles: string[] | string) {
             if (typeof roles === 'string') {
                 roles = [roles];
             }
-            const res = roles.some(role => userRoles.includes(role));
+            const res = roles.some((role) => userRoles.includes(role));
             if (!res) {
                 throw new UnauthorizedException('您没有权限访问');
             }
