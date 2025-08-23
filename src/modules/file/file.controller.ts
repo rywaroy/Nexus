@@ -11,6 +11,7 @@ import { diskStorage } from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import { ConfigService } from '@nestjs/config';
 import { FileService } from './file.service';
 import { FileValidationPipe } from './filevalidation.pipe';
 import { FileInfoDto } from './dto/file-info.dto';
@@ -20,7 +21,10 @@ import { ApiResponse } from '../../common/decorator/api-response.decorator';
 @ApiTags('文件管理')
 @Controller('file')
 export class FileController {
-    constructor(private readonly fileService: FileService) {}
+    constructor(
+        private readonly fileService: FileService,
+        private readonly configService: ConfigService,
+    ) {}
 
     /**
      * 获取multer存储配置
@@ -51,11 +55,22 @@ export class FileController {
         });
     }
 
-    @UseInterceptors(
-        FileInterceptor('file', {
+    /**
+     * 获取完整的multer配置
+     */
+    private static getMulterConfig() {
+        const maxSizeMB = parseInt(process.env.FILE_MAX_SIZE_MB) || 10;
+        const maxSizeBytes = maxSizeMB * 1024 * 1024;
+
+        return {
             storage: FileController.getStorageConfig(),
-        }),
-    )
+            limits: {
+                fileSize: maxSizeBytes,
+            },
+        };
+    }
+
+    @UseInterceptors(FileInterceptor('file', FileController.getMulterConfig()))
     @Post('upload')
     @ApiOperation({
         summary: '单文件上传',
@@ -84,9 +99,7 @@ export class FileController {
     }
 
     @UseInterceptors(
-        FilesInterceptor('files', 3, {
-            storage: FileController.getStorageConfig(),
-        }),
+        FilesInterceptor('files', 3, FileController.getMulterConfig()),
     )
     @Post('upload-files')
     @ApiOperation({

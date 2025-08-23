@@ -4,6 +4,9 @@ export default () => ({
         nodeEnv: process.env.NODE_ENV || 'development',
         baseUrl: process.env.APP_BASE_URL || 'http://localhost:3000',
     },
+    file: {
+        maxSizeMB: parseInt(process.env.FILE_MAX_SIZE_MB) || 10,
+    },
     jwt: {
         secret: process.env.JWT_SECRET || 'yourSecretKey',
         expiresIn: process.env.JWT_EXPIRES_IN || '24h',
