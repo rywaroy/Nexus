@@ -1265,3 +1265,203 @@ export class UserModule {}
   * **处理核心业务逻辑** (`user.service.ts`)，特别是像密码加密这样的安全操作。
   * **暴露安全的 API 端点** (`user.controller.ts`)，并通过守卫进行保护。
   * **封装并导出服务** (`user.module.ts`)，供其他模块复用。
+
+## 默认模块 file
+
+### **文件模块 (`src/modules/file`) 详解**
+
+`file` 模块封装了所有与文件上传相关的功能，提供了单文件和多文件上传的接口，并包含了文件存储、信息处理和验证的逻辑。
+
+-----
+
+#### **1. `file.module.ts`：文件模块定义**
+
+这是模块的入口文件，它将控制器 (`FileController`) 和服务 (`FileService`) 组装在一起，构成一个完整的功能单元。
+
+**代码分析:**
+
+```typescript
+import { Module } from '@nestjs/common';
+import { FileService } from './file.service';
+import { FileController } from './file.controller';
+
+@Module({
+    controllers: [FileController],
+    providers: [FileService],
+})
+export class FileModule {}
+```
+
+  - **`@Module({})`**: NestJS 的模块装饰器。
+  - **`controllers: [FileController]`**: 声明该模块的控制器是 `FileController`，负责处理路由和 HTTP 请求。
+  - **`providers: [FileService]`**: 注册 `FileService` 作为提供者，这意味着它可以在 `FileController` 或其他服务中被依赖注入。
+
+-----
+
+#### **2. `file.controller.ts`：文件控制器**
+
+控制器是处理文件上传请求的核心，它定义了 API 端点、配置了文件处理中间件，并集成了 Swagger 文档。
+
+**代码分析:**
+
+```typescript
+import { Controller, Post, UseInterceptors, UploadedFile, UploadedFiles } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+// ... 其他导入
+
+@ApiTags('文件管理')
+@Controller('file')
+export class FileController {
+    constructor(private readonly fileService: FileService) {}
+
+    // ... getStorageConfig() 方法 ...
+
+    @UseInterceptors(FileInterceptor('file', { storage: ... }))
+    @Post('upload')
+    // ... Swagger 装饰器 ...
+    uploadFile(@UploadedFile(FileValidationPipe) file: Express.Multer.File): FileInfoDto {
+        return this.fileService.processUploadedFile(file);
+    }
+
+    @UseInterceptors(FilesInterceptor('files', 3, { storage: ... }))
+    @Post('upload-files')
+    // ... Swagger 装饰器 ...
+    uploadFiles(@UploadedFiles(FileValidationPipe) files: Array<Express.Multer.File>): FileInfoDto[] {
+        return this.fileService.processUploadedFiles(files);
+    }
+}
+```
+
+**关键点解析:**
+
+1.  **路由定义**:
+
+      * `@Controller('file')`: 将该控制器下的所有路由都挂载在 `/api/file` 路径下。
+      * `@Post('upload')`: 定义处理单文件上传的端点，路径为 `POST /api/file/upload`。
+      * `@Post('upload-files')`: 定义处理多文件上传的端点，路径为 `POST /api/file/upload-files`。
+
+2.  **文件处理拦截器 (`@UseInterceptors`)**:
+
+      * `FileInterceptor('file', ...)`: 用于处理单个文件上传。第一个参数 `'file'` 必须与表单数据中的字段名 (`<input type="file" name="file">`) 匹配。
+      * `FilesInterceptor('files', 3, ...)`: 用于处理多个文件上传。第一个参数 `'files'` 对应表单字段名，第二个参数 `3` 表示一次最多允许上传 3 个文件。
+
+3.  **文件存储策略 (`diskStorage`)**:
+
+      * `destination`: 这个函数动态地创建存储目录。它会根据当前日期（例如 `20250823`）在 `uploads/` 目录下创建一个子文件夹，实现了按日期归档的功能。
+      * `filename`: 这个函数生成一个唯一的文件名，以避免文件名冲突。它使用 `uuidv4()` 生成一个 UUID，并拼接上原始文件的扩展名。
+
+4.  **参数装饰器与管道**:
+
+      * `@UploadedFile()`: 从请求中提取单个上传的文件对象。
+      * `@UploadedFiles()`: 从请求中提取多个上传的文件对象数组。
+      * `FileValidationPipe`: 这是一个自定义管道，会在文件传递给处理方法之前对文件进行验证（详见下文）。
+
+5.  **Swagger 文档**:
+
+      * `@ApiTags('文件管理')`: 在 Swagger UI 中为这组接口创建一个分类。
+      * `@ApiOperation`, `@ApiConsumes`, `@ApiBody`: 详细描述了接口的功能、请求的内容类型（`multipart/form-data`）以及请求体的结构，使得 API 文档清晰易懂。
+
+-----
+
+#### **3. `file.service.ts`：文件服务**
+
+服务层负责处理具体的业务逻辑，它将 `multer` 提供的原始文件对象转换为结构化的、包含更多有用信息的 DTO 对象。
+
+**代码分析:**
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { FileInfoDto } from './dto/file-info.dto';
+import * as path from 'path';
+
+@Injectable()
+export class FileService {
+    processUploadedFile(file: Express.Multer.File): FileInfoDto {
+        const fileExtension = path.extname(file.originalname);
+        const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+        const relativePath = file.path.replace(/\\/g, '/');
+
+        return {
+            filename: file.filename,
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size,
+            path: file.path,
+            extension: fileExtension,
+            uploadTime: new Date(),
+            url: `${baseUrl}/${relativePath}`,
+        };
+    }
+    // ... processUploadedFiles 方法 ...
+}
+```
+
+**关键点解析:**
+
+1.  **数据处理**: `processUploadedFile` 方法接收一个 `Express.Multer.File` 类型的对象。
+2.  **信息提取与丰富**:
+      * 它使用 `path.extname()` 提取文件扩展名。
+      * 它从环境变量中读取 `APP_BASE_URL` 来构建一个可公开访问的文件 URL。
+      * 它将 Windows 风格的路径分隔符 `\` 替换为 `/`，以确保 URL 的通用性。
+3.  **返回 DTO**: 该方法最后返回一个 `FileInfoDto` 对象，其中包含了文件名、原始文件名、MIME 类型、大小、存储路径、扩展名、上传时间和访问 URL。
+
+-----
+
+#### **4. `filevalidation.pipe.ts`：文件验证管道**
+
+这是一个自定义管道，专门用于验证上传的文件是否符合预设的规则。
+
+**代码分析:**
+
+```typescript
+import { PipeTransform, Injectable, HttpException, HttpStatus } from '@nestjs/common';
+
+@Injectable()
+export class FileValidationPipe implements PipeTransform {
+    transform(value: Express.Multer.File) {
+        const maxSizeMB = this.configService.get<number>('file.maxSizeMB', 10);
+        const maxSizeBytes = maxSizeMB * 1024 * 1024;
+
+        if (value.size > maxSizeBytes) {
+            throw new HttpException(
+                `文件大小超过${maxSizeMB}M`,
+                HttpStatus.BAD_REQUEST,
+            );
+        }
+        return value;
+    }
+}
+```
+
+**关键点解析:**
+
+1.  **`PipeTransform` 接口**: 实现了这个接口的 `transform` 方法，NestJS 会在请求参数传递给路由处理器之前调用它。
+2.  **验证逻辑**: `transform` 方法检查传入的 `file` 对象的 `size` 属性。如果文件大小超过配置的大小（默认 10MB），它会抛出一个 `HttpException`。
+3.  **异常处理**: 抛出的异常会被全局的 `HttpExceptionFilter` 捕获，并以统一的 JSON 格式返回给客户端。
+
+-----
+
+#### **5. `dto/` 目录：数据传输对象**
+
+DTO 文件定义了 API 响应的数据结构，并利用 `@nestjs/swagger` 的 `@ApiProperty` 装饰器为 Swagger 文档提供详细的字段说明。
+
+  * **`file-info.dto.ts`**: 定义了单个文件信息的结构，包含了文件名、路径、大小、URL 等字段。
+  * **`files-info.dto.ts`**: 定义了多文件上传时，响应体的结构，它包含一个 `FileInfoDto` 类型的数组。
+
+### **总结与工作流程**
+
+`file` 模块的工作流程如下：
+
+1.  客户端发起一个 `multipart/form-data` 请求到 `POST /api/file/upload` 或 `POST /api/file/upload-files`。
+2.  NestJS 的 `FileInterceptor` 或 `FilesInterceptor` 拦截该请求。
+3.  `diskStorage` 配置被执行：
+      * 根据当前日期创建 `uploads/YYYYMMDD` 目录。
+      * 生成一个 UUID 作为新的文件名，并保留原始扩展名。
+      * 文件被保存到目标目录。
+4.  `FileValidationPipe` 管道被触发，检查文件大小是否合规。如果不合规，则抛出异常，请求中断。
+5.  如果验证通过，`@UploadedFile()` 或 `@UploadedFiles()` 装饰器将处理后的文件对象注入到控制器方法中。
+6.  `FileController` 调用 `FileService` 的相应方法 (`processUploadedFile` 或 `processUploadedFiles`)。
+7.  `FileService` 将原始文件对象处理成 `FileInfoDto`，添加上访问 URL 和其他元数据。
+8.  `FileController` 将 `FileInfoDto` (或其数组) 作为响应返回。
+9.  最后，全局的 `TransformReturnInterceptor` 会将这个响应包装成 `{ "data": ..., "code": 0, "message": "..." }` 的标准格式返回给客户端。
