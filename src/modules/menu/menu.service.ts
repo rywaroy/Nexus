@@ -15,11 +15,13 @@ import {
   MenuNode,
   MenuTreeNode,
 } from './types/menu.types';
+import { RoleService } from '../role/role.service';
 
 @Injectable()
 export class MenuService {
   constructor(
     @InjectModel(Menu.name) private readonly menuModel: Model<MenuDocument>,
+    private readonly roleService: RoleService,
   ) {}
 
   /**
@@ -155,6 +157,114 @@ export class MenuService {
 
     const nodes = menus.map((menu) => this.mapToRouteNode(menu));
     return this.buildRouteTree(nodes, menus);
+  }
+
+  /**
+   * 根据用户角色获取动态路由
+   * admin 角色拥有所有权限，其他角色根据 permissions 过滤
+   * @param userRoles 用户角色名称数组
+   */
+  async getRoutesByRoles(userRoles: string[]): Promise<DynamicRouteNode[]> {
+    // admin 角色拥有所有权限
+    if (userRoles.includes('admin')) {
+      return this.getRoutes();
+    }
+
+    // 获取用户所有角色的权限（菜单ID列表）
+    const roles = await this.roleService.findByNames(userRoles);
+    const allowedMenuIds = new Set<string>();
+
+    for (const role of roles) {
+      // 跳过停用的角色
+      if (role.status === 1) continue;
+
+      for (const menuId of role.permissions) {
+        // permissions 中可能包含 '*' 表示所有权限
+        if (menuId === '*') {
+          return this.getRoutes();
+        }
+        allowedMenuIds.add(menuId);
+      }
+    }
+
+    // 如果没有任何权限，返回空数组
+    if (allowedMenuIds.size === 0) {
+      return [];
+    }
+
+    // 获取允许的菜单及其所有父级菜单（确保树结构完整）
+    const allMenuIds = await this.getMenuIdsWithAncestors(
+      Array.from(allowedMenuIds),
+    );
+
+    // 查询菜单（父级菜单即使停用也要包含，以保证树结构完整）
+    // 但按钮类型不需要
+    const menus = await this.menuModel
+      .find({
+        _id: { $in: allMenuIds },
+        type: { $ne: MenuType.BUTTON },
+      })
+      .sort({ order: 1, createdAt: 1 })
+      .lean();
+
+    // 过滤：只有授权的菜单及其启用的父级目录才显示
+    // 父级目录即使停用也要包含（用于结构），但会被标记为隐藏
+    const nodes = menus.map((menu) => this.mapToRouteNode(menu));
+    return this.buildRouteTree(nodes, menus);
+  }
+
+  /**
+   * 获取菜单ID及其所有祖先菜单ID（批量优化版本）
+   * 确保返回的菜单树结构完整
+   */
+  private async getMenuIdsWithAncestors(menuIds: string[]): Promise<string[]> {
+    const allIds = new Set<string>(menuIds);
+
+    // 批量获取所有相关菜单
+    const menusToCheck = await this.menuModel
+      .find({ _id: { $in: menuIds } })
+      .select('_id parentId')
+      .lean();
+
+    // 收集所有父级ID
+    const parentIds = new Set<string>();
+    for (const menu of menusToCheck) {
+      if (menu.parentId) {
+        parentIds.add(menu.parentId.toString());
+      }
+    }
+
+    // 递归获取更上层的父级
+    while (parentIds.size > 0) {
+      const newParentIds: string[] = [];
+
+      for (const pid of parentIds) {
+        if (!allIds.has(pid)) {
+          allIds.add(pid);
+          newParentIds.push(pid);
+        }
+      }
+
+      if (newParentIds.length === 0) break;
+
+      // 批量查询这些父级的父级
+      const parentMenus = await this.menuModel
+        .find({ _id: { $in: newParentIds } })
+        .select('_id parentId')
+        .lean();
+
+      parentIds.clear();
+      for (const menu of parentMenus) {
+        if (menu.parentId) {
+          const grandParentId = menu.parentId.toString();
+          if (!allIds.has(grandParentId)) {
+            parentIds.add(grandParentId);
+          }
+        }
+      }
+    }
+
+    return Array.from(allIds);
   }
 
   /**
@@ -435,5 +545,66 @@ export class MenuService {
     }
 
     return false;
+  }
+
+  /**
+   * 根据用户角色获取权限码列表
+   * admin 角色返回所有权限码，其他角色根据 permissions 过滤
+   * @param userRoles 用户角色名称数组
+   */
+  async getAccessCodesByRoles(userRoles: string[]): Promise<string[]> {
+    // admin 角色拥有所有权限
+    if (userRoles.includes('admin')) {
+      return this.getAllAccessCodes();
+    }
+
+    // 获取用户所有角色的权限（菜单ID列表）
+    const roles = await this.roleService.findByNames(userRoles);
+    const allowedMenuIds = new Set<string>();
+
+    for (const role of roles) {
+      // 跳过停用的角色
+      if (role.status === 1) continue;
+
+      for (const menuId of role.permissions ?? []) {
+        // permissions 中可能包含 '*' 表示所有权限
+        if (menuId === '*') {
+          return this.getAllAccessCodes();
+        }
+        allowedMenuIds.add(menuId);
+      }
+    }
+
+    // 如果没有任何权限，返回空数组
+    if (allowedMenuIds.size === 0) {
+      return [];
+    }
+
+    // 查询这些菜单的 authCode（仅启用状态的按钮类型）
+    const menus = await this.menuModel
+      .find({
+        _id: { $in: Array.from(allowedMenuIds) },
+        status: 0,
+        authCode: { $exists: true, $ne: '' },
+      })
+      .select('authCode')
+      .lean();
+
+    return menus.map((menu) => menu.authCode).filter(Boolean) as string[];
+  }
+
+  /**
+   * 获取所有启用状态的权限码
+   */
+  private async getAllAccessCodes(): Promise<string[]> {
+    const menus = await this.menuModel
+      .find({
+        status: 0,
+        authCode: { $exists: true, $ne: '' },
+      })
+      .select('authCode')
+      .lean();
+
+    return menus.map((menu) => menu.authCode).filter(Boolean) as string[];
   }
 }

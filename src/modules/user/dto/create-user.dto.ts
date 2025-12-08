@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, Length } from 'class-validator';
+import {
+    IsArray,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    Length,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateUserDto {
@@ -18,4 +24,15 @@ export class CreateUserDto {
         required: true,
     })
     password: string;
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    @ApiPropertyOptional({
+        description: '角色名称数组，默认 user',
+        required: false,
+        isArray: true,
+        type: String,
+    })
+    roles?: string[];
 }

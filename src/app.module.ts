@@ -9,6 +9,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { FileModule } from './modules/file/file.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { MenuModule } from './modules/menu/menu.module';
+import { RoleModule } from './modules/role/role.module';
+import { PermissionModule } from './common/modules/permission.module';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 
@@ -50,6 +52,8 @@ import { validationSchema } from './config/validation';
         FileModule,
         RedisModule,
         MenuModule,
+        RoleModule,
+        PermissionModule,
     ],
     controllers: [AppController],
     providers: [AppService],

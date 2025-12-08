@@ -7,11 +7,14 @@ import {
   Post,
   Put,
   Query,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
 import { MenuService } from './menu.service';
 import { CreateMenuDto } from './dto/create-menu.dto';
 import { UpdateMenuDto } from './dto/update-menu.dto';
 import { QueryMenuDto } from './dto/query-menu.dto';
+import { AuthGuard } from '../../common/guards/auth.guard';
 
 @Controller('menu')
 export class MenuController {
@@ -46,11 +49,25 @@ export class MenuController {
 
   /**
    * 获取动态路由（用于前端动态菜单）
+   * 根据当前用户角色过滤返回的菜单
    * GET /api/menu/routes
    */
+  @UseGuards(AuthGuard)
   @Get('routes')
-  getRoutes() {
-    return this.menuService.getRoutes();
+  getRoutes(@Request() req) {
+    const userRoles: string[] = req.user?.roles || [];
+    return this.menuService.getRoutesByRoles(userRoles);
+  }
+
+  /**
+   * 获取当前用户的权限码列表（用于前端按钮级权限控制）
+   * GET /api/menu/codes
+   */
+  @UseGuards(AuthGuard)
+  @Get('codes')
+  getAccessCodes(@Request() req) {
+    const userRoles: string[] = req.user?.roles || [];
+    return this.menuService.getAccessCodesByRoles(userRoles);
   }
 
   /**

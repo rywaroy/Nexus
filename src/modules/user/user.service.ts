@@ -13,8 +13,13 @@ export class UserService {
 
     async create(createUserDto: CreateUserDto): Promise<UserDocument> {
         const salt = await bcrypt.genSalt(10);
+        const roles =
+            Array.isArray(createUserDto.roles) && createUserDto.roles.length > 0
+                ? createUserDto.roles
+                : ['user'];
         const data = {
             ...createUserDto,
+            roles,
             password: await bcrypt.hash(createUserDto.password, salt),
         };
         return this.userModel.create(data);

@@ -6,16 +6,25 @@ import {
 } from '@nestjs/common';
 
 export function RoleGuard(roles: string[] | string) {
+    const normalizedRoles = Array.isArray(roles) ? roles : [roles];
+
     @Injectable()
     class RoleGuardClass implements CanActivate {
         async canActivate(context: ExecutionContext) {
             const request = context.switchToHttp().getRequest();
             const user = request.user;
-            const userRoles = user.roles;
-            if (typeof roles === 'string') {
-                roles = [roles];
+            const userRoles: string[] = Array.isArray(user?.roles)
+                ? user.roles
+                : [];
+
+            // admin 拥有所有权限
+            if (userRoles.includes('admin')) {
+                return true;
             }
-            const res = roles.some((role) => userRoles.includes(role));
+
+            const res = normalizedRoles.some((role) =>
+                userRoles.includes(role),
+            );
             if (!res) {
                 throw new UnauthorizedException('您没有权限访问');
             }

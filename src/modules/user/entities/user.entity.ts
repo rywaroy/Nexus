@@ -1,12 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
-export enum Role {
-    SUPER = 'super',
-    ADMIN = 'admin',
-    USER = 'user',
-}
-
 @Schema({ timestamps: true })
 export class User {
     @Prop({ required: true })
@@ -15,13 +9,13 @@ export class User {
     @Prop({ required: true })
     password: string;
 
+    /** 角色名称列表，默认 user */
     @Prop({
         type: [String],
-        enum: [Role.SUPER, Role.ADMIN, Role.USER],
-        default: [Role.USER],
+        default: ['user'],
         required: true,
     })
-    roles: Role[];
+    roles: string[];
 }
 
 export type UserDocument = HydratedDocument<User>;
