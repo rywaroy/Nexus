@@ -8,6 +8,7 @@ import { UserModule } from './modules/user/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { FileModule } from './modules/file/file.module';
 import { RedisModule } from './modules/redis/redis.module';
+import { MenuModule } from './modules/menu/menu.module';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 
@@ -48,6 +49,7 @@ import { validationSchema } from './config/validation';
         AuthModule,
         FileModule,
         RedisModule,
+        MenuModule,
     ],
     controllers: [AppController],
     providers: [AppService],
