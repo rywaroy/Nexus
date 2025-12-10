@@ -363,7 +363,7 @@ async function bootstrap() {
 
 Guards 文件夹负责应用的 **授权（Authorization）** 逻辑。在 NestJS 中，守卫（Guard）的核心职责是根据运行时出现的某些条件（例如权限、角色、访问控制列表等）来决定一个给定的请求是否可以被路由处理程序处理。
 
-该项目包含了两个守卫：`auth.guard.ts` 和 `role.guard.ts`。
+该项目包含了三个守卫：`auth.guard.ts`、`role.guard.ts` 和 `permission.guard.ts`。
 
 ### **1. `src/common/guards/auth.guard.ts`：JWT 认证守卫**
 
@@ -407,7 +407,7 @@ export class AuthGuard implements CanActivate {
 
             // 3. 从数据库查找用户
             const user = await this.userSerivce.findOne(_id);
-            
+
             // 4. 将用户信息附加到请求对象上
             request['user'] = user;
         } catch {
@@ -459,7 +459,7 @@ export class UserController {
 
 ### **2. `src/common/guards/role.guard.ts`：角色授权守卫**
 
-这个守卫用于实现更细粒度的访问控制，即基于角色的访问控制（RBAC）。它检查当前登录的用户是否具有访问特定资源所必需的角色。
+这个守卫用于实现基于角色的访问控制（RBAC）。它检查当前登录的用户是否具有访问特定资源所必需的角色。
 
 **代码分析:**
 
@@ -468,24 +468,29 @@ import {
     CanActivate,
     ExecutionContext,
     Injectable,
-    UnauthorizedException
+    UnauthorizedException,
 } from '@nestjs/common';
 
-export function RoleGuard(roles: string[] | string) { // 1. 这是一个工厂函数
+export function RoleGuard(roles: string[] | string) {
+    const normalizedRoles = Array.isArray(roles) ? roles : [roles];
+
     @Injectable()
     class RoleGuardClass implements CanActivate {
         async canActivate(context: ExecutionContext) {
-            // 2. 假设 AuthGuard 已运行，获取 user 对象
             const request = context.switchToHttp().getRequest();
             const user = request.user;
-            const userRoles = user.roles;
-            
-            if (typeof roles === 'string') {
-                roles = [roles];
+            const userRoles: string[] = Array.isArray(user?.roles)
+                ? user.roles
+                : [];
+
+            // admin 拥有所有权限
+            if (userRoles.includes('admin')) {
+                return true;
             }
 
-            // 3. 检查用户角色是否满足要求
-            const res = roles.some(role => userRoles.includes(role));
+            const res = normalizedRoles.some((role) =>
+                userRoles.includes(role),
+            );
             if (!res) {
                 throw new UnauthorizedException('您没有权限访问');
             }
@@ -493,7 +498,7 @@ export function RoleGuard(roles: string[] | string) { // 1. 这是一个工厂�
         }
     }
 
-    return RoleGuardClass; // 4. 返回守卫类
+    return RoleGuardClass;
 }
 ```
 
@@ -501,15 +506,16 @@ export function RoleGuard(roles: string[] | string) { // 1. 这是一个工厂�
 
 1.  **工厂函数**: `RoleGuard` 本身不是一个守卫类，而是一个接收 `roles` 参数的工厂函数。`roles` 参数定义了允许访问该路由的角色列表。
 2.  **依赖 `AuthGuard`**: 这个守卫的设计**假设 `AuthGuard` 已经先于它执行**，因此它可以安全地从 `request.user` 中获取用户信息和角色列表。
-3.  **角色检查**: `canActivate` 方法的核心逻辑是检查 `user.roles` 数组中是否至少包含一个 `RoleGuard` 参数中指定的角色。
-4.  **返回守卫**: 工厂函数最后返回一个真正的守卫类 `RoleGuardClass`。
+3.  **admin 超级权限**: `admin` 角色拥有所有权限，直接放行。
+4.  **角色检查**: `canActivate` 方法的核心逻辑是检查 `user.roles` 数组中是否至少包含一个 `RoleGuard` 参数中指定的角色。
+5.  **返回守卫**: 工厂函数最后返回一个真正的守卫类 `RoleGuardClass`。
 
-#### **使用示例 (`README.md`)**
+#### **使用示例**
 
 `RoleGuard` 和 `AuthGuard` 通常会一起使用。NestJS 会按照装饰器从下到上的顺序执行守卫。
 
 ```typescript
-import { UseGuards, Post, Request } from '@nestjs/common';
+import { UseGuards, Post, Get, Request } from '@nestjs/common';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { RoleGuard } from '../../common/guards/role.guard';
 
@@ -517,11 +523,10 @@ import { RoleGuard } from '../../common/guards/role.guard';
 
 // 示例：这个接口只允许 'admin' 角色的用户访问
 @UseGuards(RoleGuard(['admin'])) // <-- 2. RoleGuard 在 AuthGuard 之后执行
-@UseGuards(AuthGuard)         // <-- 1. AuthGuard 首先执行，进行认证并挂载 user
+@UseGuards(AuthGuard)            // <-- 1. AuthGuard 首先执行，进行认证并挂载 user
 @Post('delete-user')
 async deleteUser(@Request() req) {
     // 只有 admin 用户才能执行到这里
-    // req.user 对象在这里依然可用
     return { message: '用户已删除' };
 }
 
@@ -534,6 +539,223 @@ async getDashboardData() {
     return { data: '一些敏感数据' };
 }
 ```
+
+-----
+
+### **3. `src/common/guards/permission.guard.ts`：权限守卫（推荐）**
+
+这是基于菜单权限码（authCode）的细粒度权限控制守卫，是系统管理模块推荐使用的权限控制方式。它通过检查用户角色关联的菜单权限来判断是否有权访问接口。
+
+**代码分析:**
+
+```typescript
+import {
+    CanActivate,
+    ExecutionContext,
+    ForbiddenException,
+    Injectable,
+    UnauthorizedException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { PERMISSION_KEY } from '../decorator/permission.decorator';
+import { Menu, MenuDocument } from '../../modules/menu/entities/menu.entity';
+import { Role, RoleDocument } from '../../modules/role/entities/role.entity';
+
+@Injectable()
+export class PermissionGuard implements CanActivate {
+    constructor(
+        private readonly reflector: Reflector,
+        @InjectModel(Menu.name)
+        private readonly menuModel: Model<MenuDocument>,
+        @InjectModel(Role.name)
+        private readonly roleModel: Model<RoleDocument>,
+    ) {}
+
+    async canActivate(context: ExecutionContext): Promise<boolean> {
+        // 1. 获取接口声明的权限码
+        const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
+            PERMISSION_KEY,
+            [context.getHandler(), context.getClass()],
+        );
+
+        // 2. 未声明权限码则直接放行
+        if (!requiredPermissions || requiredPermissions.length === 0) {
+            return true;
+        }
+
+        const request = context.switchToHttp().getRequest();
+        const user = request.user;
+
+        // 3. 未登录用户返回 401
+        if (!user) {
+            throw new UnauthorizedException('请先登录');
+        }
+
+        const userRoles: string[] = Array.isArray(user.roles) ? user.roles : [];
+
+        // 4. admin 角色拥有所有权限
+        if (userRoles.includes('admin')) {
+            return true;
+        }
+
+        // 5. 获取用户所有启用的角色
+        const roles = await this.roleModel
+            .find({ name: { $in: userRoles }, status: 0 })
+            .lean();
+
+        // 6. 收集所有角色的菜单 ID
+        const menuIds: Types.ObjectId[] = [];
+        for (const role of roles) {
+            for (const menuId of role.permissions ?? []) {
+                if (menuId === '*') continue; // 忽略通配符
+                if (Types.ObjectId.isValid(menuId)) {
+                    menuIds.push(new Types.ObjectId(menuId));
+                }
+            }
+        }
+
+        if (menuIds.length === 0) {
+            throw new ForbiddenException('您没有权限访问此资源');
+        }
+
+        // 7. 查询启用状态菜单的 authCode
+        const menus = await this.menuModel
+            .find({
+                _id: { $in: menuIds },
+                status: 0,
+            })
+            .select('authCode')
+            .lean();
+
+        const ownedAuthCodes = new Set<string>();
+        for (const menu of menus) {
+            if (menu.authCode) {
+                ownedAuthCodes.add(menu.authCode);
+            }
+        }
+
+        // 8. 检查是否包含要求的任一权限码
+        const hasPermission = requiredPermissions.some((code) =>
+            ownedAuthCodes.has(code),
+        );
+
+        if (!hasPermission) {
+            throw new ForbiddenException('您没有权限访问此资源');
+        }
+
+        return true;
+    }
+}
+```
+
+**工作流程:**
+
+1.  **获取权限声明**: 通过 `Reflector` 获取接口上通过 `@RequirePermission` 装饰器声明的权限码。
+2.  **无权限声明放行**: 如果接口未声明权限码，直接放行。
+3.  **认证检查**: 检查用户是否已登录（需配合 `AuthGuard` 使用）。
+4.  **admin 超级权限**: `admin` 角色拥有所有权限，直接放行。
+5.  **获取用户角色**: 从数据库查询用户所有启用状态的角色。
+6.  **收集菜单权限**: 遍历角色的 `permissions` 字段（菜单 ID 数组），收集所有有效的菜单 ID。
+7.  **查询权限码**: 根据菜单 ID 查询对应的 `authCode`（仅启用状态的菜单）。
+8.  **权限校验**: 检查用户拥有的权限码是否包含接口要求的任一权限码。
+
+-----
+
+### **4. `src/common/decorator/permission.decorator.ts`：权限装饰器**
+
+配合 `PermissionGuard` 使用的权限声明装饰器。
+
+**代码分析:**
+
+```typescript
+import { SetMetadata } from '@nestjs/common';
+
+export const PERMISSION_KEY = 'require-permission';
+
+/**
+ * 权限声明装饰器
+ * 用于在 Controller 方法上声明需要的权限码（authCode）
+ * 支持传入多个权限码，满足任意一个即通过
+ */
+export const RequirePermission = (...permissions: string[]) =>
+    SetMetadata(PERMISSION_KEY, permissions);
+```
+
+#### **使用示例（推荐方式）**
+
+`PermissionGuard` 和 `AuthGuard` 配合使用，是系统管理模块的推荐权限控制方式：
+
+```typescript
+import { Controller, Get, Post, Put, Delete, UseGuards, Body, Param } from '@nestjs/common';
+import { AuthGuard } from '../../common/guards/auth.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorator/permission.decorator';
+
+@Controller('system/user')
+@UseGuards(AuthGuard, PermissionGuard) // 在控制器级别应用守卫
+export class SystemUserController {
+
+    @Get('list')
+    @RequirePermission('system:user:list') // 声明需要的权限码
+    async findAll() {
+        // 只有拥有 system:user:list 权限的用户才能访问
+    }
+
+    @Get(':id')
+    @RequirePermission('system:user:query')
+    async findOne(@Param('id') id: string) {
+        // 需要 system:user:query 权限
+    }
+
+    @Post()
+    @RequirePermission('system:user:create')
+    async create(@Body() createUserDto: CreateUserDto) {
+        // 需要 system:user:create 权限
+    }
+
+    @Put(':id')
+    @RequirePermission('system:user:update')
+    async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+        // 需要 system:user:update 权限
+    }
+
+    @Delete(':id')
+    @RequirePermission('system:user:delete')
+    async remove(@Param('id') id: string) {
+        // 需要 system:user:delete 权限
+    }
+
+    @Put(':id/reset-password')
+    @RequirePermission('system:user:reset-password')
+    async resetPassword(@Param('id') id: string) {
+        // 需要 system:user:reset-password 权限
+    }
+
+    // 支持多个权限码（满足任一即可）
+    @Get('export')
+    @RequirePermission('system:user:list', 'system:user:export')
+    async export() {
+        // 拥有 system:user:list 或 system:user:export 任一权限即可访问
+    }
+}
+```
+
+-----
+
+### **守卫选择建议**
+
+| 守卫 | 适用场景 | 特点 |
+| :-- | :-- | :-- |
+| `AuthGuard` | 所有需要登录的接口 | 基础认证，挂载用户信息 |
+| `RoleGuard` | 简单的角色限制 | 基于角色名称，配置简单 |
+| `PermissionGuard` | 细粒度权限控制（推荐） | 基于菜单权限码，灵活可配 |
+
+**推荐组合:**
+- 普通接口: `@UseGuards(AuthGuard)`
+- 系统管理接口: `@UseGuards(AuthGuard, PermissionGuard)` + `@RequirePermission('xxx')`
+- 简单角色限制: `@UseGuards(AuthGuard)` + `@UseGuards(RoleGuard(['admin']))`
 
 ## 公共 Interceptor
 
@@ -1465,3 +1687,396 @@ DTO 文件定义了 API 响应的数据结构，并利用 `@nestjs/swagger` 的 
 7.  `FileService` 将原始文件对象处理成 `FileInfoDto`，添加上访问 URL 和其他元数据。
 8.  `FileController` 将 `FileInfoDto` (或其数组) 作为响应返回。
 9.  最后，全局的 `TransformReturnInterceptor` 会将这个响应包装成 `{ "data": ..., "code": 0, "message": "..." }` 的标准格式返回给客户端。
+
+## 系统管理模块
+
+系统管理模块提供了完整的后台权限管理功能，包括菜单管理、部门管理、角色管理和用户管理。这些模块采用基于菜单的权限控制体系（RBAC），实现了细粒度的权限控制。
+
+### **权限体系架构**
+
+```
+┌─────────────────────────────────────┐
+│         Menu Entity                 │
+├─────────────────────────────────────┤
+│ - name (唯一)                       │
+│ - parentId (树形)                   │
+│ - type (CATALOG/MENU/BUTTON/...)   │
+│ - authCode (权限标识)               │
+│ - status                            │
+└──────────────┬──────────────────────┘
+               │
+               │ (一对多)
+               ▼
+    ┌────────────────────────┐
+    │   Role Entity          │
+    ├────────────────────────┤
+    │ - name (唯一)          │
+    │ - permissions[]        │
+    │   (菜单ID数组)         │
+    │ - status               │
+    └───────────┬────────────┘
+               │
+               │ (多对多)
+               ▼
+    ┌─────────────────────────┐
+    │   User Entity           │
+    ├─────────────────────────┤
+    │ - username (唯一)       │
+    │ - roles[] (角色名数组)  │
+    │ - deptId (部门ID)       │
+    │ - status                │
+    └──────────┬──────────────┘
+               │
+               │ (多对一)
+               ▼
+    ┌─────────────────────────┐
+    │   Dept Entity           │
+    ├─────────────────────────┤
+    │ - name                  │
+    │ - pid (树形)            │
+    │ - status                │
+    └─────────────────────────┘
+```
+
+> **注意**: 权限守卫 `PermissionGuard` 和权限装饰器 `@RequirePermission` 的详细说明请参阅 [公共 Guards](#公共-guards) 章节。
+
+-----
+
+### **菜单管理模块 (`src/modules/menu`)**
+
+菜单管理模块负责管理系统的菜单结构，支持树形结构和多种菜单类型。
+
+#### **数据模型**
+
+**MenuEntity 主要字段：**
+
+| 字段 | 类型 | 描述 |
+| :-- | :-- | :-- |
+| `name` | String (唯一) | 菜单名称/路由 name |
+| `title` | String | 菜单标题（用于显示） |
+| `parentId` | ObjectId | 父级菜单 ID，支持树形结构 |
+| `path` | String | 路由路径 |
+| `component` | String | 组件路径 |
+| `type` | Enum | 菜单类型：CATALOG(目录) / MENU(菜单) / BUTTON(按钮) / EMBEDDED(内嵌) / LINK(外链) |
+| `authCode` | String | 权限标识码，用于权限控制 |
+| `order` | Number | 排序值，越小越靠前 |
+| `status` | Number | 状态：0-启用 / 1-停用 |
+| `icon` / `activeIcon` | String | 菜单图标及激活图标 |
+| `keepAlive` | Boolean | 是否缓存页面 |
+| `affixTab` | Boolean | 是否固定在标签栏 |
+| `hideInMenu` | Boolean | 是否在菜单中隐藏 |
+| `hideChildrenInMenu` | Boolean | 是否隐藏子菜单 |
+| `hideInBreadcrumb` | Boolean | 是否在面包屑中隐藏 |
+| `hideInTab` | Boolean | 是否在标签栏隐藏 |
+| `badge` | String | 徽标内容 |
+| `badgeType` | String | 徽标类型：dot / normal |
+| `badgeVariants` | String | 徽标颜色 |
+| `iframeSrc` | String | 内嵌页面地址 |
+| `link` | String | 外链地址 |
+| `activePath` | String | 激活路径 |
+
+#### **API 接口**
+
+| 方法 | 路径 | 描述 | 权限码 |
+| :-- | :-- | :-- | :-- |
+| POST | `/api/menu` | 创建菜单 | system:menu:create |
+| GET | `/api/menu/list` | 查询菜单列表（树结构） | system:menu:list |
+| GET | `/api/menu/tree` | 获取菜单树（用于选择器） | system:menu:list |
+| GET | `/api/menu/routes` | 获取动态路由（需认证） | - |
+| GET | `/api/menu/codes` | 获取权限码列表（需认证） | - |
+| GET | `/api/menu/name-exists` | 检查名称是否存在 | - |
+| GET | `/api/menu/path-exists` | 检查路径是否存在 | - |
+| GET | `/api/menu/:id` | 查询菜单详情 | system:menu:query |
+| PUT | `/api/menu/:id` | 更新菜单 | system:menu:update |
+| DELETE | `/api/menu/:id` | 删除菜单 | system:menu:delete |
+
+#### **核心服务方法**
+
+```typescript
+// MenuService 主要方法
+class MenuService {
+    // 创建菜单，检查名称唯一性、父级存在性
+    async create(createMenuDto: CreateMenuDto): Promise<Menu>;
+
+    // 查询菜单列表，返回树结构
+    async findAll(queryMenuDto: QueryMenuDto): Promise<MenuTreeNode[]>;
+
+    // 更新菜单，防止循环引用
+    async update(id: string, updateMenuDto: UpdateMenuDto): Promise<Menu>;
+
+    // 删除菜单，检查是否有子菜单
+    async delete(id: string): Promise<void>;
+
+    // 获取动态路由（符合 vben 前端格式）
+    async getRoutes(): Promise<RouteItem[]>;
+
+    // 根据用户角色获取动态路由
+    async getRoutesByRoles(roleNames: string[]): Promise<RouteItem[]>;
+
+    // 根据用户角色获取权限码列表
+    async getAccessCodesByRoles(roleNames: string[]): Promise<string[]>;
+}
+```
+
+-----
+
+### **部门管理模块 (`src/modules/dept`)**
+
+部门管理模块负责管理组织架构，支持树形结构。
+
+#### **数据模型**
+
+**DeptEntity 主要字段：**
+
+| 字段 | 类型 | 描述 |
+| :-- | :-- | :-- |
+| `name` | String | 部门名称 |
+| `pid` | ObjectId | 父级部门 ID，根节点为 null |
+| `status` | Number | 状态：0-启用 / 1-停用 |
+| `remark` | String | 备注 |
+
+**索引约束：**
+- 复合唯一索引 `{pid: 1, name: 1}` - 同一父级下部门名称唯一
+
+#### **API 接口**
+
+| 方法 | 路径 | 描述 | 权限码 |
+| :-- | :-- | :-- | :-- |
+| GET | `/api/system/dept/list` | 获取部门列表（树形结构） | system:dept:list |
+| POST | `/api/system/dept` | 创建部门 | system:dept:create |
+| PUT | `/api/system/dept/:id` | 更新部门 | system:dept:update |
+| DELETE | `/api/system/dept/:id` | 删除部门 | system:dept:delete |
+
+#### **核心服务方法**
+
+```typescript
+// DeptService 主要方法
+class DeptService {
+    // 创建部门，检查父级有效性和同级名称唯一性
+    async create(createDeptDto: CreateDeptDto): Promise<Dept>;
+
+    // 获取部门树列表，支持状态和名称过滤
+    async findAll(queryDeptDto: QueryDeptDto): Promise<DeptTreeNode[]>;
+
+    // 更新部门，防止循环引用，校验同级名称唯一
+    async update(id: string, updateDeptDto: UpdateDeptDto): Promise<Dept>;
+
+    // 删除部门，检查是否有子部门
+    async remove(id: string): Promise<void>;
+}
+```
+
+-----
+
+### **角色管理模块 (`src/modules/role`)**
+
+角色管理模块负责管理系统角色，是权限体系的核心。
+
+#### **数据模型**
+
+**RoleEntity 主要字段：**
+
+| 字段 | 类型 | 描述 |
+| :-- | :-- | :-- |
+| `name` | String (唯一) | 角色名称 |
+| `permissions` | String[] | 关联的菜单 ID 数组（用于权限控制） |
+| `remark` | String | 备注 |
+| `status` | Number | 状态：0-启用 / 1-停用 |
+
+**内置角色：**
+- `admin` - 超级管理员，拥有所有权限（permissions: ['*']）
+- `user` - 普通用户，默认角色
+
+#### **API 接口**
+
+| 方法 | 路径 | 描述 | 权限码 |
+| :-- | :-- | :-- | :-- |
+| GET | `/api/system/role/list` | 获取角色列表（分页） | system:role:list |
+| GET | `/api/system/role/options` | 获取所有启用的角色（用于下拉选择） | - |
+| GET | `/api/system/role/:id` | 获取角色详情 | system:role:query |
+| POST | `/api/system/role` | 创建角色 | system:role:create |
+| PUT | `/api/system/role/:id` | 更新角色 | system:role:update |
+| DELETE | `/api/system/role/:id` | 删除角色 | system:role:delete |
+
+#### **核心服务方法**
+
+```typescript
+// RoleService 主要方法
+class RoleService {
+    // 创建角色，检查名称唯一性
+    async create(createRoleDto: CreateRoleDto): Promise<Role>;
+
+    // 分页查询角色列表，支持状态和名称过滤
+    async findAll(queryRoleDto: QueryRoleDto): Promise<{ list: Role[], total: number }>;
+
+    // 更新角色，限制内置角色修改
+    async update(id: string, updateRoleDto: UpdateRoleDto): Promise<Role>;
+
+    // 删除角色，检查是否有用户使用该角色
+    async remove(id: string): Promise<void>;
+
+    // 获取所有启用的角色（用于下拉选择）
+    async findAllEnabled(): Promise<Role[]>;
+
+    // 初始化内置角色（应用启动时调用）
+    async initBuiltinRoles(): Promise<void>;
+}
+```
+
+-----
+
+### **用户管理模块 (`src/modules/user`) - 更新**
+
+用户模块在原有基础上进行了扩展，增加了系统管理相关功能。
+
+#### **数据模型更新**
+
+**UserEntity 更新后的字段：**
+
+| 字段 | 类型 | 描述 |
+| :-- | :-- | :-- |
+| `username` | String (唯一) | 用户名 |
+| `password` | String | 密码（加盐 hash 存储） |
+| `nickName` | String | 用户昵称 |
+| `email` | String (唯一, sparse) | 邮箱（可为空） |
+| `phone` | String (唯一, sparse) | 手机号（可为空） |
+| `avatar` | String | 头像 URL |
+| `status` | Number | 状态：0-启用 / 1-停用 |
+| `deptId` | ObjectId | 部门 ID |
+| `remark` | String | 备注 |
+| `roles` | String[] | 角色名称列表，默认 ['user'] |
+
+#### **DTO 说明**
+
+**RegisterUserDto（用户注册）：**
+- 仅允许提交：username、password、nickName
+- 强制使用默认角色和启用状态，防止提权
+
+**CreateUserDto（管理员创建）：**
+- 允许提交所有字段
+- 支持设置角色、部门等
+
+**UpdateUserDto（更新用户）：**
+- 继承 CreateUserDto 但排除 username 和 password（不可修改）
+- 所有字段均为可选
+
+#### **API 接口**
+
+**公开接口 (`/api/user`)：**
+
+| 方法 | 路径 | 描述 | 权限码 |
+| :-- | :-- | :-- | :-- |
+| GET | `/api/user/info` | 获取当前登录用户信息（需认证） | - |
+| POST | `/api/user/register` | 用户注册（公开） | - |
+
+**系统管理接口 (`/api/system/user`)：**
+
+| 方法 | 路径 | 描述 | 权限码 |
+| :-- | :-- | :-- | :-- |
+| GET | `/api/system/user/list` | 用户列表（分页） | system:user:list |
+| GET | `/api/system/user/:id` | 用户详情 | system:user:query |
+| POST | `/api/system/user` | 新增用户 | system:user:create |
+| PUT | `/api/system/user/:id` | 更新用户 | system:user:update |
+| DELETE | `/api/system/user/:id` | 删除用户 | system:user:delete |
+| PUT | `/api/system/user/:id/status` | 更新用户状态 | system:user:update |
+| PUT | `/api/system/user/:id/reset-password` | 重置用户密码 | system:user:reset-password |
+
+#### **核心服务方法**
+
+```typescript
+// UserService 更新后的方法
+class UserService {
+    // 创建用户（管理员接口），检查唯一性，密码加密
+    async create(createUserDto: CreateUserDto): Promise<User>;
+
+    // 用户注册（公开接口），强制使用默认角色和启用状态
+    async register(registerUserDto: RegisterUserDto): Promise<User>;
+
+    // 分页查询用户列表，支持多条件过滤
+    async findAll(queryUserDto: QueryUserDto): Promise<{ list: User[], total: number }>;
+
+    // 根据 ID 查询用户详情
+    async findById(id: string): Promise<User>;
+
+    // 更新用户信息，不允许修改 username 和 password
+    async update(id: string, updateUserDto: UpdateUserDto): Promise<User>;
+
+    // 删除用户
+    async remove(id: string): Promise<void>;
+
+    // 更新用户状态
+    async updateStatus(id: string, status: number): Promise<User>;
+
+    // 重置用户密码（管理员）
+    async resetPassword(id: string, password: string): Promise<void>;
+}
+```
+
+-----
+
+### **权限码命名规范**
+
+权限码采用 `模块:资源:操作` 的格式，例如：
+
+```
+system:user:list      - 用户列表
+system:user:query     - 用户查询
+system:user:create    - 创建用户
+system:user:update    - 更新用户
+system:user:delete    - 删除用户
+system:user:reset-password - 重置密码
+
+system:role:list      - 角色列表
+system:role:query     - 角色查询
+system:role:create    - 创建角色
+system:role:update    - 更新角色
+system:role:delete    - 删除角色
+
+system:dept:list      - 部门列表
+system:dept:create    - 创建部门
+system:dept:update    - 更新部门
+system:dept:delete    - 删除部门
+
+system:menu:list      - 菜单列表
+system:menu:query     - 菜单查询
+system:menu:create    - 创建菜单
+system:menu:update    - 更新菜单
+system:menu:delete    - 删除菜单
+```
+
+-----
+
+### **认证登录响应更新**
+
+登录成功后，响应数据结构更新为：
+
+```json
+{
+    "code": 0,
+    "message": "请求成功",
+    "data": {
+        "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        "id": "507f1f77bcf86cd799439011",
+        "username": "admin",
+        "roles": ["admin"],
+        "realName": "管理员"
+    }
+}
+```
+
+获取用户信息接口 (`GET /api/user/info`) 响应更新为：
+
+```json
+{
+    "code": 0,
+    "message": "请求成功",
+    "data": {
+        "id": "507f1f77bcf86cd799439011",
+        "username": "admin",
+        "realName": "管理员",
+        "avatar": "https://...",
+        "roles": ["admin"],
+        "homePath": "/dashboard"
+    }
+}
+```
