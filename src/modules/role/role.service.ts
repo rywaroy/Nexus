@@ -7,7 +7,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { QueryRoleDto } from './dto/query-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -134,9 +134,29 @@ export class RoleService {
 
   /**
    * 根据名称数组查询角色列表
+   * 兼容：当用户 roles 存的是角色ID（ObjectId 字符串）时，也能正确查询
    */
   async findByNames(names: string[]): Promise<RoleDocument[]> {
-    return this.roleModel.find({ name: { $in: names } });
+    const normalized = Array.isArray(names)
+      ? names
+          .filter((v) => typeof v === 'string')
+          .map((v) => v.trim())
+          .filter(Boolean)
+      : [];
+
+    if (normalized.length === 0) return [];
+
+    const unique = Array.from(new Set(normalized));
+    const roleIds = unique
+      .filter((v) => Types.ObjectId.isValid(v))
+      .map((v) => new Types.ObjectId(v));
+
+    const query: FilterQuery<RoleDocument> =
+      roleIds.length > 0
+        ? { $or: [{ name: { $in: unique } }, { _id: { $in: roleIds } }] }
+        : { name: { $in: unique } };
+
+    return this.roleModel.find(query);
   }
 
   /**
@@ -192,8 +212,10 @@ export class RoleService {
     }
 
     // 检查是否有用户使用该角色
+    // 兼容：用户 roles 里可能存的是 role.name 或 role._id
+    const roleKeys = [role.name, role._id.toString()];
     const userCount = await this.userModel.countDocuments({
-      roles: role.name,
+      roles: { $in: roleKeys },
     });
     if (userCount > 0) {
       throw new BadRequestException(

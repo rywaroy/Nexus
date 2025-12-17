@@ -178,7 +178,7 @@ export class MenuService {
       // 跳过停用的角色
       if (role.status === 1) continue;
 
-      for (const menuId of role.permissions) {
+      for (const menuId of role.permissions ?? []) {
         // permissions 中可能包含 '*' 表示所有权限
         if (menuId === '*') {
           return this.getRoutes();

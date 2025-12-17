@@ -13,6 +13,7 @@ import {
     UpdateUserDto,
 } from './dto';
 import { User, UserDocument } from './entities/user.entity';
+import { Role, RoleDocument } from '../role/entities/role.entity';
 
 /** 用户响应 DTO（用于返回给前端） */
 export interface UserResponseDto {
@@ -37,8 +38,16 @@ export interface UserListResponse {
 
 @Injectable()
 export class UserService {
+    /** 角色ID到名称的缓存映射 */
+    private roleIdToNameCache: Map<string, string> = new Map();
+    /** 缓存过期时间（毫秒） */
+    private cacheExpireTime = 0;
+    /** 缓存有效期（5分钟） */
+    private readonly CACHE_TTL = 5 * 60 * 1000;
+
     constructor(
         @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+        @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
     ) {}
 
     /**
@@ -133,7 +142,7 @@ export class UserService {
         ]);
 
         return {
-            list: list.map((item) => this.toResponse(item)),
+            list: await Promise.all(list.map((item) => this.toResponse(item))),
             total,
         };
     };
@@ -254,15 +263,62 @@ export class UserService {
     };
 
     /**
+     * 刷新角色ID到名称的缓存
+     */
+    private async refreshRoleCache(): Promise<void> {
+        const now = Date.now();
+        if (now < this.cacheExpireTime && this.roleIdToNameCache.size > 0) {
+            return;
+        }
+
+        try {
+            const roles = await this.roleModel.find().select('_id name').lean();
+            this.roleIdToNameCache.clear();
+            for (const role of roles) {
+                this.roleIdToNameCache.set(role._id.toString(), role.name);
+            }
+            this.cacheExpireTime = now + this.CACHE_TTL;
+        } catch {
+            // 查询失败时保持现有缓存，避免影响用户接口
+        }
+    }
+
+    /**
+     * 将角色ID数组转换为角色名称数组
+     * 兼容：如果已经是角色名称则保持不变
+     */
+    private async normalizeRolesToNames(roles: string[]): Promise<string[]> {
+        if (!Array.isArray(roles) || roles.length === 0) {
+            return [];
+        }
+
+        await this.refreshRoleCache();
+
+        const roleNameSet = new Set(this.roleIdToNameCache.values());
+
+        return roles.map((role) => {
+            // 如果已经是角色名称，直接返回
+            if (roleNameSet.has(role)) {
+                return role;
+            }
+            // 如果是角色ID，转换为名称
+            const name = this.roleIdToNameCache.get(role);
+            return name ?? role;
+        });
+    }
+
+    /**
      * 将 MongoDB 文档转换为前端响应格式
      */
-    private toResponse = (doc: UserDocument | any): UserResponseDto => {
+    private toResponse = async (doc: UserDocument | any): Promise<UserResponseDto> => {
         const obj = doc.toObject ? doc.toObject() : doc;
+        const roles = Array.isArray(obj.roles) ? obj.roles : [];
+
         return {
             id: obj._id?.toString(),
             username: obj.username,
             nickName: obj.nickName,
-            roles: Array.isArray(obj.roles) ? obj.roles : [],
+            roles: await this.normalizeRolesToNames(roles),
             email: obj.email,
             phone: obj.phone,
             avatar: obj.avatar,

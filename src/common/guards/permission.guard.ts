@@ -60,15 +60,42 @@ export class PermissionGuard implements CanActivate {
 
         const userRoles: string[] = Array.isArray(user.roles) ? user.roles : [];
 
-        // admin 角色拥有所有权限
-        if (userRoles.includes('admin')) {
+        // 获取用户所有启用的角色
+        // 兼容：user.roles 既可能存"角色名称"，也可能存"角色ID（ObjectId 字符串）"
+        const normalizedRoleKeys = userRoles
+            .filter((v) => typeof v === 'string')
+            .map((v) => v.trim())
+            .filter(Boolean);
+
+        // admin 角色名称直接放行
+        if (normalizedRoleKeys.includes('admin')) {
             return true;
         }
 
-        // 获取用户所有启用的角色
+        const roleIds = Array.from(
+            new Set(
+                normalizedRoleKeys.filter((v) => Types.ObjectId.isValid(v)),
+            ),
+        ).map((id) => new Types.ObjectId(id));
+
         const roles = await this.roleModel
-            .find({ name: { $in: userRoles }, status: 0 })
+            .find(
+                roleIds.length > 0
+                    ? {
+                          status: 0,
+                          $or: [
+                              { name: { $in: normalizedRoleKeys } },
+                              { _id: { $in: roleIds } },
+                          ],
+                      }
+                    : { status: 0, name: { $in: normalizedRoleKeys } },
+            )
             .lean();
+
+        // admin 角色拥有所有权限（兼容通过角色ID命中 admin 的情况）
+        if (roles.some((role) => role.name === 'admin')) {
+            return true;
+        }
 
         // 收集所有角色的菜单 ID，过滤掉无效的 ObjectId
         const menuIds: Types.ObjectId[] = [];
