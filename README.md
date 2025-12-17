@@ -152,6 +152,134 @@ Nexus 是一个基于 NestJS 框架构建的后端应用程序。它提供了一
 4.  **API 文档:**
     访问 `http://localhost:3000/api/v1/swagger` 查看 Swagger API 文档。
 
+### **6. 项目初始化**
+
+项目提供了初始化脚本，用于创建管理员账户、默认部门和系统菜单。
+
+#### **运行初始化脚本**
+
+```bash
+npm run init:admin
+```
+
+#### **初始化内容**
+
+脚本会自动创建以下数据：
+
+**1. 内置角色**
+| 角色名 | 权限 | 说明 |
+| :-- | :-- | :-- |
+| `admin` | `['*']` + 所有菜单ID | 超级管理员，拥有所有权限 |
+| `user` | `[]` | 默认用户角色，无后台权限（C端用户） |
+
+**2. 默认部门**
+| 部门名称 | 说明 |
+| :-- | :-- |
+| 总公司 | 系统默认一级部门 |
+
+**3. 系统菜单结构**
+
+```
+Dashboard (仪表盘)
+├── Analytics (分析页) - 默认首页，固定标签
+└── Workspace (工作台)
+
+System (系统管理)
+├── Menu (菜单管理)
+│   ├── system:menu:list (查看列表)
+│   ├── system:menu:create (新增)
+│   ├── system:menu:update (修改)
+│   └── system:menu:delete (删除)
+├── Dept (部门管理)
+│   ├── system:dept:list (查看列表)
+│   ├── system:dept:create (新增)
+│   ├── system:dept:update (修改)
+│   └── system:dept:delete (删除)
+├── Role (角色管理)
+│   ├── system:role:list (查看列表)
+│   ├── system:role:query (查询详情)
+│   ├── system:role:create (新增)
+│   ├── system:role:update (修改)
+│   └── system:role:delete (删除)
+└── User (用户管理)
+    ├── system:user:list (查看列表)
+    ├── system:user:query (查询详情)
+    ├── system:user:create (新增)
+    ├── system:user:update (修改)
+    ├── system:user:delete (删除)
+    └── system:user:reset-password (重置密码)
+```
+
+**4. 管理员账户**
+| 字段 | 值 |
+| :-- | :-- |
+| 用户名 | `admin` |
+| 密码 | `admin123` |
+| 昵称 | 超级管理员 |
+| 角色 | `admin` |
+| 部门 | 总公司 |
+
+> ⚠️ **安全提示**: 请在首次登录后立即修改默认密码！
+
+#### **重复执行**
+
+初始化脚本支持重复执行，已存在的数据会被跳过：
+- 已存在的角色、部门、菜单、用户不会重复创建
+- 如果 admin 用户存在但未关联部门，会自动更新关联
+- 角色权限会被更新为最新的菜单列表
+
+#### **执行示例**
+
+```bash
+$ npm run init:admin
+
+========================================
+       Nexus 初始化脚本
+========================================
+
+[数据库] 连接到: mongodb://127.0.0.1:27017/nexus
+[数据库] 连接成功
+
+[角色] 检查内置角色...
+  [创建] admin 角色
+  [创建] user 角色
+
+[部门] 创建默认部门...
+  [创建] 总公司（一级部门）
+
+[菜单] 创建 Dashboard 菜单...
+  [创建] 菜单: Dashboard (catalog)
+  [创建] 菜单: Analytics (menu)
+  [创建] 菜单: Workspace (menu)
+
+[菜单] 创建系统菜单...
+  [创建] 菜单: System (catalog)
+  [创建] 菜单: SystemMenu (menu)
+  ...
+
+[角色] 更新角色权限...
+  [更新] admin 角色权限（27 个菜单）
+
+[用户] 创建管理员用户...
+  [创建] admin 用户
+  [信息] 用户名: admin
+  [信息] 密码: admin123
+  [信息] 所属部门: 总公司
+  [警告] 请登录后立即修改默认密码！
+
+========================================
+       初始化完成
+========================================
+
+[统计]
+  菜单总数: 27
+  用户总数: 1
+  角色总数: 2
+  部门总数: 1
+
+[数据库] 连接已关闭
+```
+
 ## config
 
 ### **1. `src/config/configuration.ts`：配置工厂函数**
