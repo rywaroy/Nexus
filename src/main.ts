@@ -19,6 +19,10 @@ async function bootstrap() {
     prefix: '/static/',
   });
 
+  app.useStaticAssets('uploads', {
+    prefix: '/uploads/',
+  });
+
   const options = new DocumentBuilder()
     .setTitle('标题')
     .setDescription('描述信息')

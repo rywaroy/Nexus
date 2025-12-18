@@ -24,4 +24,12 @@ export default () => ({
     password: process.env.REDIS_PASSWORD || '',
     database: parseInt(process.env.REDIS_DB) || 0,
   },
+  oss: {
+    accessKeyId: process.env.OSS_ACCESS_KEY_ID || '',
+    accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET || '',
+    bucket: process.env.OSS_BUCKET || '',
+    region: process.env.OSS_REGION || 'oss-cn-hangzhou',
+    endpoint: process.env.OSS_ENDPOINT || '',
+    dir: process.env.OSS_DIR || 'uploads',
+  },
 });

@@ -1,30 +1,31 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { FileInfoDto } from './dto/file-info.dto';
 import * as path from 'path';
+import { IStorageStrategy, STORAGE_STRATEGY } from './storage';
 
 @Injectable()
 export class FileService {
+  constructor(
+    @Inject(STORAGE_STRATEGY)
+    private readonly storage: IStorageStrategy,
+  ) {}
+
   /**
    * 处理上传的文件，返回文件信息
    * @param file 上传的文件
    * @returns 文件信息
    */
-  processUploadedFile(file: Express.Multer.File): FileInfoDto {
-    const fileExtension = path.extname(file.originalname);
-    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
-
-    // 生成相对路径用于URL（统一使用正斜杠）
-    const relativePath = file.path.replace(/\\/g, '/');
-
+  async processUploadedFile(file: Express.Multer.File): Promise<FileInfoDto> {
+    const result = await this.storage.upload(file);
     return {
-      filename: file.filename,
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      size: file.size,
-      path: file.path,
-      extension: fileExtension,
+      filename: result.filename,
+      originalname: result.originalname,
+      mimetype: result.mimetype,
+      size: result.size,
+      path: result.path,
+      extension: path.extname(result.originalname),
       uploadTime: new Date(),
-      url: `${baseUrl}/${relativePath}`,
+      url: result.url,
     };
   }
 
@@ -33,7 +34,9 @@ export class FileService {
    * @param files 上传的文件数组
    * @returns 文件信息数组
    */
-  processUploadedFiles(files: Express.Multer.File[]): FileInfoDto[] {
-    return files.map((file) => this.processUploadedFile(file));
+  async processUploadedFiles(
+    files: Express.Multer.File[],
+  ): Promise<FileInfoDto[]> {
+    return Promise.all(files.map((file) => this.processUploadedFile(file)));
   }
 }

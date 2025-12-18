@@ -7,11 +7,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { diskStorage } from 'multer';
-import * as path from 'path';
-import * as fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
-import { ConfigService } from '@nestjs/config';
+import { memoryStorage } from 'multer';
 import { FileService } from './file.service';
 import { FileValidationPipe } from './filevalidation.pipe';
 import { FileInfoDto } from './dto/file-info.dto';
@@ -21,49 +17,17 @@ import { ApiResponse } from '../../common/decorator/api-response.decorator';
 @ApiTags('文件管理')
 @Controller('file')
 export class FileController {
-  constructor(
-    private readonly fileService: FileService,
-    private readonly configService: ConfigService,
-  ) { }
+  constructor(private readonly fileService: FileService) {}
 
   /**
-   * 获取multer存储配置
-   */
-  private static getStorageConfig() {
-    return diskStorage({
-      destination: (req, file, callback) => {
-        // 生成日期文件夹
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const dateFolder = `${year}${month}${day}`;
-        const uploadDir = `uploads/${dateFolder}`;
-
-        // 确保目录存在
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        callback(null, uploadDir);
-      },
-      filename: (req, file, callback) => {
-        const extension = path.extname(file.originalname);
-        const uuid = uuidv4();
-        const filename = `${uuid}${extension}`;
-        callback(null, filename);
-      },
-    });
-  }
-
-  /**
-   * 获取完整的multer配置
+   * 获取multer存储配置（使用内存存储以支持 OSS）
    */
   private static getMulterConfig() {
     const maxSizeMB = parseInt(process.env.FILE_MAX_SIZE_MB) || 10;
     const maxSizeBytes = maxSizeMB * 1024 * 1024;
 
     return {
-      storage: FileController.getStorageConfig(),
+      storage: memoryStorage(),
       limits: {
         fileSize: maxSizeBytes,
       },
@@ -92,9 +56,9 @@ export class FileController {
     },
   })
   @ApiResponse(FileInfoDto, '文件上传成功')
-  uploadFile(
+  async uploadFile(
     @UploadedFile(FileValidationPipe) file: Express.Multer.File,
-  ): FileInfoDto {
+  ): Promise<FileInfoDto> {
     return this.fileService.processUploadedFile(file);
   }
 
@@ -125,9 +89,9 @@ export class FileController {
     },
   })
   @ApiResponse(FilesInfoDto, '文件上传成功')
-  uploadFiles(
+  async uploadFiles(
     @UploadedFiles(FileValidationPipe) files: Array<Express.Multer.File>,
-  ): FileInfoDto[] {
+  ): Promise<FileInfoDto[]> {
     return this.fileService.processUploadedFiles(files);
   }
 }
