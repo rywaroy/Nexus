@@ -125,17 +125,17 @@ import { AuthGuard } from '@/common/guards/auth.guard';
       * 这是一个自定义的守卫，用于实现基于角色的访问控制。
       * 它会检查当前用户的角色是否包含在允许访问的角色列表中。
 
-##### **4.4. 数据库 (`src/modules/user`, `src/modules/redis`)**
+##### **4.4. 数据库 (`src/modules/system/user`, `src/modules/common/redis`)**
 
   * **MongoDB:**
       * **连接:** 在 `AppModule` 中，使用 `MongooseModule.forRootAsync` 异步地配置 MongoDB 连接。连接参数（如主机、端口、数据库名、用户名、密码）都是通过 `ConfigService` 从环境变量中动态获取的。
-      * **Schema 和 Model:** `src/modules/user/entities/user.entity.ts` 文件中定义了 `User` 的 Mongoose Schema 和模型。
+      * **Schema 和 Model:** `src/modules/system/user/entities/user.entity.ts` 文件中定义了 `User` 的 Mongoose Schema 和模型。
       * **数据操作:** `UserService` 通过 `@InjectModel(User.name)` 注入 `UserModel`，并使用它来进行数据库的增删改查操作。
   * **Redis:**
       * **连接:** `RedisService` 在构造函数中初始化一个 `ioredis` 实例，连接信息同样来自于 `ConfigService`。
       * **服务:** `RedisModule` 提供了 `RedisService`，它封装了一些常用的 Redis 操作，如 `set`, `get`, 和 `del`，并被注册为全局模块，可以在任何地方注入使用。
 
-##### **4.5. 文件上传 (`src/modules/file`)**
+##### **4.5. 文件上传 (`src/modules/common/file`)**
 
   * **控制器:** `FileController` 定义了两个用于文件上传的端点 `/upload` 和 `/upload-files`。
   * **拦截器:**
@@ -583,7 +583,7 @@ export class AuthGuard implements CanActivate {
 4.  **挂载用户**: 将查询到的用户信息（不包含密码）挂载到 `request` 对象上，赋值给 `request['user']`。这样做的好处是，后续的处理器（包括其他守卫、控制器等）可以直接从请求对象中获取当前登录的用户信息。
 5.  **处理异常**: 如果在任何步骤中出现问题（如 Token 不存在、验证失败），则会抛出 `UnauthorizedException`，NestJS 会中断请求并返回一个 `401 Unauthorized` 错误。
 
-#### **使用示例 (`src/modules/user/user.controller.ts`)**
+#### **使用示例 (`src/modules/system/user/user.controller.ts`)**
 
 `AuthGuard` 通过 `@UseGuards()` 装饰器应用在需要保护的路由上。
 
@@ -712,8 +712,8 @@ import { Reflector } from '@nestjs/core';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { PERMISSION_KEY } from '../decorator/permission.decorator';
-import { Menu, MenuDocument } from '../../modules/menu/entities/menu.entity';
-import { Role, RoleDocument } from '../../modules/role/entities/role.entity';
+import { Menu, MenuDocument } from '@/modules/system/menu/entities/menu.entity';
+import { Role, RoleDocument } from '@/modules/system/role/entities/role.entity';
 
 @Injectable()
 export class PermissionGuard implements CanActivate {
@@ -1150,7 +1150,7 @@ app.useGlobalPipes(new ValidationPipe());
 
 让我们结合 `CreateUserDto` 和 `UserController` 来看一个完整的例子。
 
-**1. 定义 DTO (`src/modules/user/dto/create-user.dto.ts`):**
+**1. 定义 DTO (`src/modules/system/user/dto/create-user.dto.ts`):**
 
 这里使用 `class-validator` 的装饰器来定义验证规则。
 
@@ -1169,7 +1169,7 @@ export class CreateUserDto {
 }
 ```
 
-**2. 在 Controller 中使用 DTO (`src/modules/user/user.controller.ts`):**
+**2. 在 Controller 中使用 DTO (`src/modules/system/user/user.controller.ts`):**
 
 ```typescript
 @Controller('user')
@@ -1449,7 +1449,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
 这个模块是应用中与用户相关的核心业务模块，它负责管理用户数据，包括用户的创建、查询以及定义用户的数据结构。它与 `auth` 模块紧密相连，为认证和授权提供了基础数据支持。
 
-### **1. `src/modules/user/entities/user.entity.ts`：用户实体/模型**
+### **1. `src/modules/system/user/entities/user.entity.ts`：用户实体/模型**
 
 这个文件定义了用户数据在 MongoDB 中存储的结构（Schema）。
 
@@ -1497,7 +1497,7 @@ export const UserSchema = SchemaFactory.createForClass(User);
 
 -----
 
-### **2. `src/modules/user/dto/create-user.dto.ts` 和 `update-user.dto.ts`：数据传输对象**
+### **2. `src/modules/system/user/dto/create-user.dto.ts` 和 `update-user.dto.ts`：数据传输对象**
 
 DTO (Data Transfer Object) 用于定义接口的输入/输出数据结构，并配合 `ValidationPipe` 进行数据验证。
 
@@ -1520,7 +1520,7 @@ DTO (Data Transfer Object) 用于定义接口的输入/输出数据结构，并�
 
 -----
 
-### **3. `src/modules/user/user.service.ts`：用户服务**
+### **3. `src/modules/system/user/user.service.ts`：用户服务**
 
 这是用户模块的业务逻辑层，负责与数据库进行交互和处理数据。
 
@@ -1566,7 +1566,7 @@ export class UserService {
 
 -----
 
-### **4. `src/modules/user/user.controller.ts`：用户控制器**
+### **4. `src/modules/system/user/user.controller.ts`：用户控制器**
 
 控制器负责处理与用户相关的 HTTP 请求，并调用 `UserService` 来完成具体的业务逻辑。
 
@@ -1610,7 +1610,7 @@ export class UserController {
 
 -----
 
-### **5. `src/modules/user/user.module.ts`：用户模块**
+### **5. `src/modules/system/user/user.module.ts`：用户模块**
 
 最后，模块文件将以上所有部分组合在一起。
 
