@@ -8,33 +8,33 @@ import { User, UserDocument } from '../user/entities/user.entity';
 
 @Injectable()
 export class AuthService {
-    constructor(
-        private jwtService: JwtService,
-        @InjectModel(User.name) private userModel: Model<UserDocument>,
-    ) {}
+  constructor(
+    private jwtService: JwtService,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+  ) { }
 
-    async login(loginDto: LoginDto) {
-        const { username, password } = loginDto;
-        const user = await this.userModel.findOne({ username }).lean();
-        if (!user) {
-            throw new HttpException({ message: '用户不存在' }, 201);
-        }
-        const isMatch = bcrypt.compareSync(password, user.password);
-        if (!isMatch) {
-            throw new HttpException({ message: '密码错误' }, 201);
-        }
-        return {
-            _id: user._id.toString(),
-            username: user.username,
-            roles: user.roles,
-        };
+  async login(loginDto: LoginDto) {
+    const { username, password } = loginDto;
+    const user = await this.userModel.findOne({ username }).lean();
+    if (!user) {
+      throw new HttpException({ message: '用户不存在' }, 201);
     }
+    const isMatch = bcrypt.compareSync(password, user.password);
+    if (!isMatch) {
+      throw new HttpException({ message: '密码错误' }, 201);
+    }
+    return {
+      _id: user._id.toString(),
+      username: user.username,
+      roles: user.roles,
+    };
+  }
 
-    async createToken(user: any): Promise<string> {
-        return this.jwtService.sign(user);
-    }
+  async createToken(user: any): Promise<string> {
+    return this.jwtService.sign(user);
+  }
 
-    async logout(): Promise<void> {
-        return;
-    }
+  async logout(): Promise<void> {
+    return;
+  }
 }

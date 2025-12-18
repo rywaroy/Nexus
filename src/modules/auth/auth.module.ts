@@ -7,11 +7,11 @@ import { User, UserSchema } from '../user/entities/user.entity';
 import { UserModule } from '../user/user.module';
 
 @Module({
-    imports: [
-        MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
-        UserModule,
-    ],
-    controllers: [AuthController],
-    providers: [AuthService, JwtStrategy],
+  imports: [
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    UserModule,
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy],
 })
-export class AuthModule {}
+export class AuthModule { }

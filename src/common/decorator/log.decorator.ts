@@ -7,24 +7,24 @@ export const LOG_KEY_METADATA = 'operation_log_key';
  * 操作日志配置选项
  */
 export interface LogOption {
-    /** 模块标题 */
-    title?: string;
-    /** 业务类型 */
-    businessType?: BusinessTypeEnum;
-    /** 是否保存请求参数 */
-    isSaveRequestData?: boolean;
-    /** 是否保存响应数据 */
-    isSaveResponseData?: boolean;
+  /** 模块标题 */
+  title?: string;
+  /** 业务类型 */
+  businessType?: BusinessTypeEnum;
+  /** 是否保存请求参数 */
+  isSaveRequestData?: boolean;
+  /** 是否保存响应数据 */
+  isSaveResponseData?: boolean;
 }
 
 /**
  * 默认操作日志配置
  */
 const defaultLogOption: LogOption = {
-    title: '',
-    businessType: BusinessTypeEnum.OTHER,
-    isSaveRequestData: true,
-    isSaveResponseData: true,
+  title: '',
+  businessType: BusinessTypeEnum.OTHER,
+  isSaveRequestData: true,
+  isSaveResponseData: true,
 };
 
 /**
@@ -45,6 +45,6 @@ const defaultLogOption: LogOption = {
  * export() { ... }
  */
 export const Log = (option?: LogOption) => {
-    const mergedOption = { ...defaultLogOption, ...option };
-    return SetMetadata(LOG_KEY_METADATA, mergedOption);
+  const mergedOption = { ...defaultLogOption, ...option };
+  return SetMetadata(LOG_KEY_METADATA, mergedOption);
 };

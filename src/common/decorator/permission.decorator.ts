@@ -22,4 +22,4 @@ export const PERMISSION_KEY = 'require-permission';
  * ```
  */
 export const RequirePermission = (...permissions: string[]) =>
-    SetMetadata(PERMISSION_KEY, permissions);
+  SetMetadata(PERMISSION_KEY, permissions);

@@ -17,49 +17,49 @@ import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 
 @Module({
-    imports: [
-        ConfigModule.forRoot({
-            isGlobal: true,
-            load: [configuration],
-            validationSchema,
-        }),
-        JwtModule.registerAsync({
-            global: true,
-            imports: [ConfigModule],
-            useFactory: async (configService: ConfigService) => {
-                const jwt = configService.get('jwt');
-                return {
-                    secret: jwt.secret,
-                    signOptions: {
-                        expiresIn: jwt.expiresIn,
-                    },
-                };
-            },
-            inject: [ConfigService],
-        }),
-        UserModule,
-        MongooseModule.forRootAsync({
-            imports: [ConfigModule],
-            useFactory: async (configService: ConfigService) => {
-                const mongodb = configService.get('mongodb');
-                return {
-                    uri: `mongodb://${mongodb.host}:${mongodb.port}/${mongodb.database}`,
-                    user: mongodb.user,
-                    pass: mongodb.password,
-                };
-            },
-            inject: [ConfigService],
-        }),
-        AuthModule,
-        FileModule,
-        RedisModule,
-        MenuModule,
-        RoleModule,
-        DeptModule,
-        OperLogModule,
-        PermissionModule,
-    ],
-    controllers: [AppController],
-    providers: [AppService],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [configuration],
+      validationSchema,
+    }),
+    JwtModule.registerAsync({
+      global: true,
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => {
+        const jwt = configService.get('jwt');
+        return {
+          secret: jwt.secret,
+          signOptions: {
+            expiresIn: jwt.expiresIn,
+          },
+        };
+      },
+      inject: [ConfigService],
+    }),
+    UserModule,
+    MongooseModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => {
+        const mongodb = configService.get('mongodb');
+        return {
+          uri: `mongodb://${mongodb.host}:${mongodb.port}/${mongodb.database}`,
+          user: mongodb.user,
+          pass: mongodb.password,
+        };
+      },
+      inject: [ConfigService],
+    }),
+    AuthModule,
+    FileModule,
+    RedisModule,
+    MenuModule,
+    RoleModule,
+    DeptModule,
+    OperLogModule,
+    PermissionModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

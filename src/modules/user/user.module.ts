@@ -7,14 +7,14 @@ import { Role, RoleSchema } from '../role/entities/role.entity';
 import { AuthGuard } from '../../common/guards/auth.guard';
 
 @Module({
-    imports: [
-        MongooseModule.forFeature([
-            { name: User.name, schema: UserSchema },
-            { name: Role.name, schema: RoleSchema },
-        ]),
-    ],
-    controllers: [UserController, SystemUserController],
-    providers: [UserService, AuthGuard],
-    exports: [UserService, AuthGuard],
+  imports: [
+    MongooseModule.forFeature([
+      { name: User.name, schema: UserSchema },
+      { name: Role.name, schema: RoleSchema },
+    ]),
+  ],
+  controllers: [UserController, SystemUserController],
+  providers: [UserService, AuthGuard],
+  exports: [UserService, AuthGuard],
 })
-export class UserModule {}
+export class UserModule { }

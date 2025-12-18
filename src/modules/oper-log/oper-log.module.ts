@@ -11,22 +11,22 @@ import { Role, RoleSchema } from '../role/entities/role.entity';
 
 @Global()
 @Module({
-    imports: [
-        MongooseModule.forFeature([
-            { name: OperLog.name, schema: OperLogSchema },
-            { name: Menu.name, schema: MenuSchema },
-            { name: Role.name, schema: RoleSchema },
-        ]),
-        UserModule,
-    ],
-    controllers: [OperLogController],
-    providers: [
-        OperLogService,
-        {
-            provide: APP_INTERCEPTOR,
-            useClass: OperationLogInterceptor,
-        },
-    ],
-    exports: [OperLogService],
+  imports: [
+    MongooseModule.forFeature([
+      { name: OperLog.name, schema: OperLogSchema },
+      { name: Menu.name, schema: MenuSchema },
+      { name: Role.name, schema: RoleSchema },
+    ]),
+    UserModule,
+  ],
+  controllers: [OperLogController],
+  providers: [
+    OperLogService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: OperationLogInterceptor,
+    },
+  ],
+  exports: [OperLogService],
 })
-export class OperLogModule {}
+export class OperLogModule { }

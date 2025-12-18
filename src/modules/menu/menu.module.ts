@@ -7,13 +7,13 @@ import { RoleModule } from '../role/role.module';
 import { UserModule } from '../user/user.module';
 
 @Module({
-    imports: [
-        MongooseModule.forFeature([{ name: Menu.name, schema: MenuSchema }]),
-        RoleModule,
-        UserModule,
-    ],
-    controllers: [MenuController],
-    providers: [MenuService],
-    exports: [MenuService],
+  imports: [
+    MongooseModule.forFeature([{ name: Menu.name, schema: MenuSchema }]),
+    RoleModule,
+    UserModule,
+  ],
+  controllers: [MenuController],
+  providers: [MenuService],
+  exports: [MenuService],
 })
-export class MenuModule {}
+export class MenuModule { }

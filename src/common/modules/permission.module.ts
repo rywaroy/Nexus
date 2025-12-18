@@ -11,13 +11,13 @@ import { Role, RoleSchema } from '../../modules/role/entities/role.entity';
  */
 @Global()
 @Module({
-    imports: [
-        MongooseModule.forFeature([
-            { name: Menu.name, schema: MenuSchema },
-            { name: Role.name, schema: RoleSchema },
-        ]),
-    ],
-    providers: [PermissionGuard],
-    exports: [PermissionGuard, MongooseModule],
+  imports: [
+    MongooseModule.forFeature([
+      { name: Menu.name, schema: MenuSchema },
+      { name: Role.name, schema: RoleSchema },
+    ]),
+  ],
+  providers: [PermissionGuard],
+  exports: [PermissionGuard, MongooseModule],
 })
-export class PermissionModule {}
+export class PermissionModule { }

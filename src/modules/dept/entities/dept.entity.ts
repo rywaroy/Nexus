@@ -7,21 +7,21 @@ import { HydratedDocument, Types } from 'mongoose';
  */
 @Schema({ timestamps: true })
 export class Dept {
-    /** 部门名称 */
-    @Prop({ required: true })
-    name: string;
+  /** 部门名称 */
+  @Prop({ required: true })
+  name: string;
 
-    /** 父级部门ID，根节点为 null */
-    @Prop({ type: Types.ObjectId, ref: 'Dept', default: null })
-    pid: Types.ObjectId | null;
+  /** 父级部门ID，根节点为 null */
+  @Prop({ type: Types.ObjectId, ref: 'Dept', default: null })
+  pid: Types.ObjectId | null;
 
-    /** 状态：0-启用，1-停用 */
-    @Prop({ default: 0 })
-    status: number;
+  /** 状态：0-启用，1-停用 */
+  @Prop({ default: 0 })
+  status: number;
 
-    /** 备注 */
-    @Prop()
-    remark?: string;
+  /** 备注 */
+  @Prop()
+  remark?: string;
 }
 
 export type DeptDocument = HydratedDocument<Dept>;

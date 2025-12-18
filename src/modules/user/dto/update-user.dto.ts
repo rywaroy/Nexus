@@ -7,5 +7,5 @@ import { CreateUserDto } from './create-user.dto';
  * 所有字段均为可选
  */
 export class UpdateUserDto extends PartialType(
-    OmitType(CreateUserDto, ['username', 'password'] as const),
-) {}
+  OmitType(CreateUserDto, ['username', 'password'] as const),
+) { }
