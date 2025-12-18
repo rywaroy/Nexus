@@ -52,9 +52,15 @@ Nexus 是一个基于 NestJS 框架构建的后端应用程序。它提供了一
 │   ├── main.ts            # 应用入口文件
 │   └── modules/           # 业务模块
 │       ├── auth/          # 认证模块
-│       ├── file/          # 文件模块
-│       ├── redis/         # Redis 模块
-│       └── user/          # 用户模块
+│       ├── common/        # 公共基础设施模块
+│       │   ├── file/      # 文件存储服务
+│       │   └── redis/     # Redis 缓存服务
+│       └── system/        # 系统管理模块
+│           ├── user/      # 用户管理
+│           ├── role/      # 角色管理
+│           ├── dept/      # 部门管理
+│           ├── menu/      # 菜单管理
+│           └── oper-log/  # 操作日志
 ├── test/                  # 测试文件
 ├── .env.example           # 环境变量示例文件
 ├── .eslintrc.js           # ESLint 配置文件
@@ -63,7 +69,19 @@ Nexus 是一个基于 NestJS 框架构建的后端应用程序。它提供了一
 ├── nest-cli.json          # Nest CLI 配置文件
 ├── package.json           # 项目依赖和脚本
 ├── tsconfig.build.json    # TypeScript 编译配置（用于构建）
-└── tsconfig.json          # TypeScript 编译配置
+└── tsconfig.json          # TypeScript 编译配置（含路径别名 @/* -> src/*）
+```
+
+### **路径别名**
+
+项目配置了 TypeScript 路径别名，使用 `@/*` 指向 `src/*` 目录，简化跨目录导入：
+
+```typescript
+// 之前
+import { AuthGuard } from '../../../common/guards/auth.guard';
+
+// 现在
+import { AuthGuard } from '@/common/guards/auth.guard';
 ```
 
 ### **4. 核心功能详解**
@@ -515,7 +533,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
-import { UserService } from 'src/modules/user/user.service';
+import { UserService } from '@/modules/system/user/user.service';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -571,7 +589,7 @@ export class AuthGuard implements CanActivate {
 
 ```typescript
 import { Controller, Get, UseGuards, Request } from '@nestjs/common';
-import { AuthGuard } from '../../common/guards/auth.guard';
+import { AuthGuard } from '@/common/guards/auth.guard';
 
 @Controller('user')
 export class UserController {
@@ -650,8 +668,8 @@ export function RoleGuard(roles: string[] | string) {
 
 ```typescript
 import { UseGuards, Post, Get, Request } from '@nestjs/common';
-import { AuthGuard } from '../../common/guards/auth.guard';
-import { RoleGuard } from '../../common/guards/role.guard';
+import { AuthGuard } from '@/common/guards/auth.guard';
+import { RoleGuard } from '@/common/guards/role.guard';
 
 // ...
 
@@ -823,9 +841,9 @@ export const RequirePermission = (...permissions: string[]) =>
 
 ```typescript
 import { Controller, Get, Post, Put, Delete, UseGuards, Body, Param } from '@nestjs/common';
-import { AuthGuard } from '../../common/guards/auth.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
-import { RequirePermission } from '../../common/decorator/permission.decorator';
+import { AuthGuard } from '@/common/guards/auth.guard';
+import { PermissionGuard } from '@/common/guards/permission.guard';
+import { RequirePermission } from '@/common/decorator/permission.decorator';
 
 @Controller('system/user')
 @UseGuards(AuthGuard, PermissionGuard) // 在控制器级别应用守卫
@@ -1565,7 +1583,7 @@ import {
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
-import { AuthGuard } from '../../common/guards/auth.guard';
+import { AuthGuard } from '@/common/guards/auth.guard';
 
 @Controller('user')
 export class UserController {
@@ -1624,7 +1642,7 @@ export class UserModule {}
 
 ## 默认模块 file
 
-### **文件模块 (`src/modules/file`) 详解**
+### **文件模块 (`src/modules/common/file`) 详解**
 
 `file` 模块封装了所有与文件上传相关的功能，提供了单文件和多文件上传的接口，并包含了文件存储、信息处理和验证的逻辑。
 
@@ -1876,7 +1894,7 @@ DTO 文件定义了 API 响应的数据结构，并利用 `@nestjs/swagger` 的 
 
 -----
 
-### **菜单管理模块 (`src/modules/menu`)**
+### **菜单管理模块 (`src/modules/system/menu`)**
 
 菜单管理模块负责管理系统的菜单结构，支持树形结构和多种菜单类型。
 
@@ -1954,7 +1972,7 @@ class MenuService {
 
 -----
 
-### **部门管理模块 (`src/modules/dept`)**
+### **部门管理模块 (`src/modules/system/dept`)**
 
 部门管理模块负责管理组织架构，支持树形结构。
 
@@ -2002,7 +2020,7 @@ class DeptService {
 
 -----
 
-### **角色管理模块 (`src/modules/role`)**
+### **角色管理模块 (`src/modules/system/role`)**
 
 角色管理模块负责管理系统角色，是权限体系的核心。
 
@@ -2059,7 +2077,7 @@ class RoleService {
 
 -----
 
-### **用户管理模块 (`src/modules/user`) - 更新**
+### **用户管理模块 (`src/modules/system/user`) - 更新**
 
 用户模块在原有基础上进行了扩展，增加了系统管理相关功能。
 
@@ -2152,7 +2170,7 @@ class UserService {
 
 日志监控模块提供了操作日志的记录、查询和管理功能，用于系统审计和问题排查。
 
-### **操作日志模块 (`src/modules/oper-log`)**
+### **操作日志模块 (`src/modules/system/oper-log`)**
 
 操作日志模块自动记录系统中的关键操作，包括用户的增删改查等行为，便于追踪和审计。
 
@@ -2241,7 +2259,7 @@ interface LogOptions {
 **使用示例：**
 
 ```typescript
-import { Log } from '../../common/decorator/log.decorator';
+import { Log } from '@/common/decorator/log.decorator';
 import { BusinessTypeEnum } from '../oper-log/entities/oper-log.entity';
 
 @Controller('system/user')
