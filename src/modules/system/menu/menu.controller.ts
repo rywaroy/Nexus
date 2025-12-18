@@ -14,8 +14,8 @@ import { MenuService } from './menu.service';
 import { CreateMenuDto } from './dto/create-menu.dto';
 import { UpdateMenuDto } from './dto/update-menu.dto';
 import { QueryMenuDto } from './dto/query-menu.dto';
-import { AuthGuard } from '../../common/guards/auth.guard';
-import { Log } from '../../common/decorator/log.decorator';
+import { AuthGuard } from '@/common/guards/auth.guard';
+import { Log } from '@/common/decorator/log.decorator';
 import { BusinessTypeEnum } from '../oper-log/entities/oper-log.entity';
 
 @Controller('menu')

@@ -13,10 +13,10 @@ import { DeptService } from './dept.service';
 import { CreateDeptDto } from './dto/create-dept.dto';
 import { UpdateDeptDto } from './dto/update-dept.dto';
 import { QueryDeptDto } from './dto/query-dept.dto';
-import { AuthGuard } from '../../common/guards/auth.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
-import { RequirePermission } from '../../common/decorator/permission.decorator';
-import { Log } from '../../common/decorator/log.decorator';
+import { AuthGuard } from '@/common/guards/auth.guard';
+import { PermissionGuard } from '@/common/guards/permission.guard';
+import { RequirePermission } from '@/common/decorator/permission.decorator';
+import { Log } from '@/common/decorator/log.decorator';
 import { BusinessTypeEnum } from '../oper-log/entities/oper-log.entity';
 
 @Controller('system/dept')

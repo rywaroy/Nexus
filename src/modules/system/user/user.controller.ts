@@ -20,10 +20,10 @@ import {
   RegisterUserDto,
   UpdateUserDto,
 } from './dto';
-import { AuthGuard } from '../../common/guards/auth.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
-import { RequirePermission } from '../../common/decorator/permission.decorator';
-import { Log } from '../../common/decorator/log.decorator';
+import { AuthGuard } from '@/common/guards/auth.guard';
+import { PermissionGuard } from '@/common/guards/permission.guard';
+import { RequirePermission } from '@/common/decorator/permission.decorator';
+import { Log } from '@/common/decorator/log.decorator';
 import { BusinessTypeEnum } from '../oper-log/entities/oper-log.entity';
 
 /** 更新状态 DTO */

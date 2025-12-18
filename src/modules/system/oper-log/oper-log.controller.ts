@@ -9,10 +9,10 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OperLogService } from './oper-log.service';
 import { QueryOperLogDto } from './dto/oper-log.dto';
-import { AuthGuard } from '../../common/guards/auth.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
-import { RequirePermission } from '../../common/decorator/permission.decorator';
-import { Log } from '../../common/decorator/log.decorator';
+import { AuthGuard } from '@/common/guards/auth.guard';
+import { PermissionGuard } from '@/common/guards/permission.guard';
+import { RequirePermission } from '@/common/decorator/permission.decorator';
+import { Log } from '@/common/decorator/log.decorator';
 import { BusinessTypeEnum } from './entities/oper-log.entity';
 
 @ApiTags('操作日志管理')

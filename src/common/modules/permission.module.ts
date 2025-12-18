@@ -1,8 +1,8 @@
 import { Global, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PermissionGuard } from '../guards/permission.guard';
-import { Menu, MenuSchema } from '../../modules/menu/entities/menu.entity';
-import { Role, RoleSchema } from '../../modules/role/entities/role.entity';
+import { Menu, MenuSchema } from '@/modules/system/menu/entities/menu.entity';
+import { Role, RoleSchema } from '@/modules/system/role/entities/role.entity';
 
 /**
  * 权限模块

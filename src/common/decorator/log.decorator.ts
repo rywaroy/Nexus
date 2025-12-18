@@ -1,5 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
-import { BusinessTypeEnum } from '../../modules/oper-log/entities/oper-log.entity';
+import { BusinessTypeEnum } from '@/modules/system/oper-log/entities/oper-log.entity';
 
 export const LOG_KEY_METADATA = 'operation_log_key';
 

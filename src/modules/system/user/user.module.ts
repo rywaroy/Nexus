@@ -4,7 +4,7 @@ import { UserService } from './user.service';
 import { UserController, SystemUserController } from './user.controller';
 import { User, UserSchema } from './entities/user.entity';
 import { Role, RoleSchema } from '../role/entities/role.entity';
-import { AuthGuard } from '../../common/guards/auth.guard';
+import { AuthGuard } from '@/common/guards/auth.guard';
 
 @Module({
   imports: [

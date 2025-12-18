@@ -11,8 +11,8 @@ import { LOG_KEY_METADATA, LogOption } from '../decorator/log.decorator';
 import {
   BusinessTypeEnum,
   OperStatusEnum,
-} from '../../modules/oper-log/entities/oper-log.entity';
-import { OperLogService } from '../../modules/oper-log/oper-log.service';
+} from '@/modules/system/oper-log/entities/oper-log.entity';
+import { OperLogService } from '@/modules/system/oper-log/oper-log.service';
 
 /**
  * 操作日志拦截器

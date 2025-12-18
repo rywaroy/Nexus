@@ -4,7 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { OperLogService } from './oper-log.service';
 import { OperLogController } from './oper-log.controller';
 import { OperLog, OperLogSchema } from './entities/oper-log.entity';
-import { OperationLogInterceptor } from '../../common/interceptor/operation-log.interceptor';
+import { OperationLogInterceptor } from '@/common/interceptor/operation-log.interceptor';
 import { UserModule } from '../user/user.module';
 import { Menu, MenuSchema } from '../menu/entities/menu.entity';
 import { Role, RoleSchema } from '../role/entities/role.entity';

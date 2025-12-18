@@ -9,8 +9,8 @@ import { Reflector } from '@nestjs/core';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { PERMISSION_KEY } from '../decorator/permission.decorator';
-import { Menu, MenuDocument } from '../../modules/menu/entities/menu.entity';
-import { Role, RoleDocument } from '../../modules/role/entities/role.entity';
+import { Menu, MenuDocument } from '@/modules/system/menu/entities/menu.entity';
+import { Role, RoleDocument } from '@/modules/system/role/entities/role.entity';
 
 /**
  * 权限守卫

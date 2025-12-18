@@ -13,10 +13,10 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { QueryRoleDto } from './dto/query-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleService } from './role.service';
-import { AuthGuard } from '../../common/guards/auth.guard';
-import { PermissionGuard } from '../../common/guards/permission.guard';
-import { RequirePermission } from '../../common/decorator/permission.decorator';
-import { Log } from '../../common/decorator/log.decorator';
+import { AuthGuard } from '@/common/guards/auth.guard';
+import { PermissionGuard } from '@/common/guards/permission.guard';
+import { RequirePermission } from '@/common/decorator/permission.decorator';
+import { Log } from '@/common/decorator/log.decorator';
 import { BusinessTypeEnum } from '../oper-log/entities/oper-log.entity';
 
 @Controller('system/role')

@@ -12,7 +12,7 @@ import { FileService } from './file.service';
 import { FileValidationPipe } from './filevalidation.pipe';
 import { FileInfoDto } from './dto/file-info.dto';
 import { FilesInfoDto } from './dto/files-info.dto';
-import { ApiResponse } from '../../common/decorator/api-response.decorator';
+import { ApiResponse } from '@/common/decorator/api-response.decorator';
 
 @ApiTags('文件管理')
 @Controller('file')
