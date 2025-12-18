@@ -39,7 +39,7 @@ export class OperLogController {
     @ApiOperation({ summary: '清空操作日志' })
     @Delete('clean')
     @RequirePermission('monitor:operlog:delete')
-    @Log({ title: '操作日志管理', businessType: BusinessTypeEnum.CLEAN })
+    // 注意：清空操作日志不记录日志，避免循环
     async clean() {
         return this.operLogService.clean();
     }
