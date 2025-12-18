@@ -11,6 +11,7 @@ import { RedisModule } from './modules/redis/redis.module';
 import { MenuModule } from './modules/menu/menu.module';
 import { RoleModule } from './modules/role/role.module';
 import { DeptModule } from './modules/dept/dept.module';
+import { OperLogModule } from './modules/oper-log/oper-log.module';
 import { PermissionModule } from './common/modules/permission.module';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
@@ -55,6 +56,7 @@ import { validationSchema } from './config/validation';
         MenuModule,
         RoleModule,
         DeptModule,
+        OperLogModule,
         PermissionModule,
     ],
     controllers: [AppController],

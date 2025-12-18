@@ -348,6 +348,55 @@ const SYSTEM_MENUS: MenuData[] = [
   },
 ];
 
+// 监控管理菜单数据
+const MONITOR_MENUS: MenuData[] = [
+  {
+    name: 'Monitor',
+    title: 'monitor.title',
+    path: '/monitor',
+    type: MenuType.CATALOG,
+    icon: 'mdi:monitor-eye',
+    order: 9998,
+    children: [
+      {
+        name: 'MonitorOperLog',
+        title: 'monitor.operlog.title',
+        path: 'operlog',
+        component: 'monitor/operlog/list',
+        type: MenuType.MENU,
+        icon: 'mdi:clipboard-text-clock-outline',
+        order: 1,
+        children: [
+          {
+            name: 'MonitorOperLogList',
+            title: 'monitor.operlog.list',
+            path: '#',
+            type: MenuType.BUTTON,
+            authCode: 'monitor:operlog:list',
+            order: 1,
+          },
+          {
+            name: 'MonitorOperLogQuery',
+            title: 'monitor.operlog.query',
+            path: '#',
+            type: MenuType.BUTTON,
+            authCode: 'monitor:operlog:query',
+            order: 2,
+          },
+          {
+            name: 'MonitorOperLogDelete',
+            title: 'monitor.operlog.delete',
+            path: '#',
+            type: MenuType.BUTTON,
+            authCode: 'monitor:operlog:delete',
+            order: 3,
+          },
+        ],
+      },
+    ],
+  },
+];
+
 // 递归创建菜单
 async function createMenus(
   menus: MenuData[],
@@ -479,7 +528,11 @@ async function main() {
     console.log('\n[菜单] 创建系统菜单...');
     await createMenus(SYSTEM_MENUS);
 
-    // 5. 更新角色权限
+    // 5. 创建监控管理菜单
+    console.log('\n[菜单] 创建监控管理菜单...');
+    await createMenus(MONITOR_MENUS);
+
+    // 6. 更新角色权限
     console.log('\n[角色] 更新角色权限...');
     const allMenuIds = await getAllMenuIds();
 

@@ -208,6 +208,12 @@ System (系统管理)
     ├── system:user:update (修改)
     ├── system:user:delete (删除)
     └── system:user:reset-password (重置密码)
+
+Monitor (日志监控)
+└── OperLog (操作日志)
+    ├── monitor:operlog:list (查看列表)
+    ├── monitor:operlog:query (查询详情)
+    └── monitor:operlog:delete (删除/清空)
 ```
 
 **4. 管理员账户**
@@ -2142,6 +2148,155 @@ class UserService {
 
 -----
 
+## 日志监控模块
+
+日志监控模块提供了操作日志的记录、查询和管理功能，用于系统审计和问题排查。
+
+### **操作日志模块 (`src/modules/oper-log`)**
+
+操作日志模块自动记录系统中的关键操作，包括用户的增删改查等行为，便于追踪和审计。
+
+#### **数据模型**
+
+**OperLogEntity 主要字段：**
+
+| 字段 | 类型 | 描述 |
+| :-- | :-- | :-- |
+| `title` | String | 模块标题（如：用户管理、角色管理） |
+| `businessType` | Number | 业务类型（枚举值） |
+| `method` | String | 方法名称（控制器.方法） |
+| `requestMethod` | String | 请求方式（GET/POST/PUT/DELETE） |
+| `operName` | String | 操作人员用户名 |
+| `deptName` | String | 操作人员部门名称 |
+| `operUrl` | String | 请求 URL |
+| `operIp` | String | 操作 IP 地址 |
+| `operLocation` | String | 操作地点 |
+| `operParam` | String | 请求参数（JSON 字符串） |
+| `jsonResult` | String | 返回结果（JSON 字符串） |
+| `status` | Number | 操作状态：0-成功 / 1-失败 |
+| `errorMsg` | String | 错误消息（失败时记录） |
+| `operTime` | Date | 操作时间 |
+| `costTime` | Number | 消耗时间（毫秒） |
+
+**业务类型枚举 (BusinessTypeEnum)：**
+
+| 值 | 名称 | 描述 |
+| :-- | :-- | :-- |
+| 0 | OTHER | 其他 |
+| 1 | INSERT | 新增 |
+| 2 | UPDATE | 修改 |
+| 3 | DELETE | 删除 |
+| 4 | GRANT | 授权 |
+| 5 | EXPORT | 导出 |
+| 6 | IMPORT | 导入 |
+| 7 | FORCE | 强退 |
+| 8 | CLEAN | 清空 |
+
+#### **API 接口**
+
+| 方法 | 路径 | 描述 | 权限码 |
+| :-- | :-- | :-- | :-- |
+| GET | `/api/monitor/operlog/list` | 查询操作日志列表（分页） | monitor:operlog:list |
+| GET | `/api/monitor/operlog/:id` | 查询操作日志详情 | monitor:operlog:query |
+| DELETE | `/api/monitor/operlog/clean` | 清空所有操作日志 | monitor:operlog:delete |
+| DELETE | `/api/monitor/operlog/:ids` | 删除操作日志（支持批量，逗号分隔） | monitor:operlog:delete |
+
+#### **核心服务方法**
+
+```typescript
+// OperLogService 主要方法
+class OperLogService {
+    // 创建操作日志（由装饰器自动调用）
+    async create(createOperLogDto: CreateOperLogDto): Promise<OperLog>;
+
+    // 分页查询操作日志列表，支持多条件过滤
+    async findAll(queryOperLogDto: QueryOperLogDto): Promise<{ list: OperLog[], total: number }>;
+
+    // 根据 ID 查询操作日志详情
+    async findOne(id: string): Promise<OperLog | null>;
+
+    // 批量删除操作日志
+    async remove(ids: string[]): Promise<{ deletedCount: number }>;
+
+    // 清空所有操作日志
+    async clean(): Promise<{ deletedCount: number }>;
+}
+```
+
+#### **使用 @Log 装饰器**
+
+操作日志通过 `@Log` 装饰器自动记录，无需手动调用服务。
+
+**装饰器参数：**
+
+```typescript
+interface LogOptions {
+    title: string;              // 模块标题
+    businessType: BusinessTypeEnum;  // 业务类型
+    isSaveRequestData?: boolean;     // 是否保存请求参数（默认 true）
+    isSaveResponseData?: boolean;    // 是否保存响应数据（默认 true）
+}
+```
+
+**使用示例：**
+
+```typescript
+import { Log } from '../../common/decorator/log.decorator';
+import { BusinessTypeEnum } from '../oper-log/entities/oper-log.entity';
+
+@Controller('system/user')
+@UseGuards(AuthGuard, PermissionGuard)
+export class UserController {
+
+    @Post()
+    @RequirePermission('system:user:create')
+    @Log({ title: '用户管理', businessType: BusinessTypeEnum.INSERT })
+    async create(@Body() dto: CreateUserDto) {
+        return this.userService.create(dto);
+    }
+
+    @Put(':id')
+    @RequirePermission('system:user:update')
+    @Log({ title: '用户管理', businessType: BusinessTypeEnum.UPDATE })
+    async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+        return this.userService.update(id, dto);
+    }
+
+    @Delete(':id')
+    @RequirePermission('system:user:delete')
+    @Log({ title: '用户管理', businessType: BusinessTypeEnum.DELETE })
+    async remove(@Param('id') id: string) {
+        return this.userService.remove(id);
+    }
+
+    // 敏感操作：不保存请求参数（如密码）
+    @Put(':id/reset-password')
+    @RequirePermission('system:user:reset-password')
+    @Log({
+        title: '用户管理',
+        businessType: BusinessTypeEnum.UPDATE,
+        isSaveRequestData: false  // 不记录密码
+    })
+    async resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto) {
+        return this.userService.resetPassword(id, dto.password);
+    }
+}
+```
+
+#### **已集成 @Log 装饰器的模块**
+
+以下模块的增删改操作已自动记录操作日志：
+
+| 模块 | 操作 | title |
+| :-- | :-- | :-- |
+| 用户管理 | 创建、更新、删除、更新状态、重置密码 | 用户管理 |
+| 角色管理 | 创建、更新、删除 | 角色管理 |
+| 部门管理 | 创建、更新、删除 | 部门管理 |
+| 菜单管理 | 创建、更新、删除 | 菜单管理 |
+| 操作日志 | 删除、清空 | 操作日志管理 |
+
+-----
+
 ### **权限码命名规范**
 
 权限码采用 `模块:资源:操作` 的格式，例如：
@@ -2170,6 +2325,10 @@ system:menu:query     - 菜单查询
 system:menu:create    - 创建菜单
 system:menu:update    - 更新菜单
 system:menu:delete    - 删除菜单
+
+monitor:operlog:list    - 操作日志列表
+monitor:operlog:query   - 操作日志查询
+monitor:operlog:delete  - 删除/清空操作日志
 ```
 
 -----

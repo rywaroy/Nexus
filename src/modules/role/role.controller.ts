@@ -16,6 +16,8 @@ import { RoleService } from './role.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorator/permission.decorator';
+import { Log } from '../../common/decorator/log.decorator';
+import { BusinessTypeEnum } from '../oper-log/entities/oper-log.entity';
 
 @Controller('system/role')
 @UseGuards(AuthGuard, PermissionGuard)
@@ -53,6 +55,7 @@ export class RoleController {
    */
   @Post()
   @RequirePermission('system:role:create')
+  @Log({ title: '角色管理', businessType: BusinessTypeEnum.INSERT })
   async create(@Body() dto: CreateRoleDto) {
     return this.roleService.create(dto);
   }
@@ -62,6 +65,7 @@ export class RoleController {
    */
   @Put(':id')
   @RequirePermission('system:role:update')
+  @Log({ title: '角色管理', businessType: BusinessTypeEnum.UPDATE })
   async update(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
     return this.roleService.update(id, dto);
   }
@@ -71,6 +75,7 @@ export class RoleController {
    */
   @Delete(':id')
   @RequirePermission('system:role:delete')
+  @Log({ title: '角色管理', businessType: BusinessTypeEnum.DELETE })
   async remove(@Param('id') id: string) {
     return this.roleService.remove(id);
   }

@@ -15,6 +15,8 @@ import { CreateMenuDto } from './dto/create-menu.dto';
 import { UpdateMenuDto } from './dto/update-menu.dto';
 import { QueryMenuDto } from './dto/query-menu.dto';
 import { AuthGuard } from '../../common/guards/auth.guard';
+import { Log } from '../../common/decorator/log.decorator';
+import { BusinessTypeEnum } from '../oper-log/entities/oper-log.entity';
 
 @Controller('menu')
 export class MenuController {
@@ -25,6 +27,7 @@ export class MenuController {
    * POST /api/menu
    */
   @Post()
+  @Log({ title: '菜单管理', businessType: BusinessTypeEnum.INSERT })
   create(@Body() createMenuDto: CreateMenuDto) {
     return this.menuService.create(createMenuDto);
   }
@@ -102,6 +105,7 @@ export class MenuController {
    * PUT /api/menu/:id
    */
   @Put(':id')
+  @Log({ title: '菜单管理', businessType: BusinessTypeEnum.UPDATE })
   update(@Param('id') id: string, @Body() updateMenuDto: UpdateMenuDto) {
     return this.menuService.update(id, updateMenuDto);
   }
@@ -111,6 +115,7 @@ export class MenuController {
    * DELETE /api/menu/:id
    */
   @Delete(':id')
+  @Log({ title: '菜单管理', businessType: BusinessTypeEnum.DELETE })
   remove(@Param('id') id: string) {
     return this.menuService.delete(id);
   }

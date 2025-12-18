@@ -23,6 +23,8 @@ import {
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorator/permission.decorator';
+import { Log } from '../../common/decorator/log.decorator';
+import { BusinessTypeEnum } from '../oper-log/entities/oper-log.entity';
 
 /** 更新状态 DTO */
 class UpdateStatusDto {
@@ -111,6 +113,7 @@ export class SystemUserController {
      */
     @Post()
     @RequirePermission('system:user:create')
+    @Log({ title: '用户管理', businessType: BusinessTypeEnum.INSERT })
     @ApiOperation({ summary: '新增用户' })
     create(@Body() dto: CreateUserDto) {
         return this.userService.create(dto);
@@ -122,6 +125,7 @@ export class SystemUserController {
      */
     @Put(':id')
     @RequirePermission('system:user:update')
+    @Log({ title: '用户管理', businessType: BusinessTypeEnum.UPDATE })
     @ApiOperation({ summary: '更新用户' })
     update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
         return this.userService.update(id, dto);
@@ -133,6 +137,7 @@ export class SystemUserController {
      */
     @Delete(':id')
     @RequirePermission('system:user:delete')
+    @Log({ title: '用户管理', businessType: BusinessTypeEnum.DELETE })
     @ApiOperation({ summary: '删除用户' })
     remove(@Param('id') id: string) {
         return this.userService.remove(id);
@@ -144,6 +149,7 @@ export class SystemUserController {
      */
     @Put(':id/status')
     @RequirePermission('system:user:update')
+    @Log({ title: '用户管理', businessType: BusinessTypeEnum.UPDATE })
     @ApiOperation({ summary: '更新用户状态' })
     updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
         return this.userService.updateStatus(id, dto.status);
@@ -155,6 +161,7 @@ export class SystemUserController {
      */
     @Put(':id/reset-password')
     @RequirePermission('system:user:reset-password')
+    @Log({ title: '用户管理', businessType: BusinessTypeEnum.UPDATE, isSaveRequestData: false })
     @ApiOperation({ summary: '重置用户密码' })
     resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto) {
         return this.userService.resetPassword(id, dto.password);
