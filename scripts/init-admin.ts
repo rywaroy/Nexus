@@ -344,51 +344,37 @@ const SYSTEM_MENUS: MenuData[] = [
           },
         ],
       },
-    ],
-  },
-];
-
-// 监控管理菜单数据
-const MONITOR_MENUS: MenuData[] = [
-  {
-    name: 'Monitor',
-    title: 'monitor.title',
-    path: '/monitor',
-    type: MenuType.CATALOG,
-    icon: 'mdi:monitor-eye',
-    order: 9998,
-    children: [
       {
-        name: 'MonitorOperLog',
-        title: 'monitor.operlog.title',
-        path: 'operlog',
-        component: 'monitor/operlog/list',
+        name: 'SystemLog',
+        title: 'system.log.title',
+        path: 'log',
+        component: 'system/log/list',
         type: MenuType.MENU,
         icon: 'mdi:clipboard-text-clock-outline',
-        order: 1,
+        order: 5,
         children: [
           {
-            name: 'MonitorOperLogList',
-            title: 'monitor.operlog.list',
+            name: 'SystemLogList',
+            title: 'system.log.list',
             path: '#',
             type: MenuType.BUTTON,
-            authCode: 'monitor:operlog:list',
+            authCode: 'system:log:list',
             order: 1,
           },
           {
-            name: 'MonitorOperLogQuery',
-            title: 'monitor.operlog.query',
+            name: 'SystemLogQuery',
+            title: 'system.log.query',
             path: '#',
             type: MenuType.BUTTON,
-            authCode: 'monitor:operlog:query',
+            authCode: 'system:log:query',
             order: 2,
           },
           {
-            name: 'MonitorOperLogDelete',
-            title: 'monitor.operlog.delete',
+            name: 'SystemLogDelete',
+            title: 'system.log.delete',
             path: '#',
             type: MenuType.BUTTON,
-            authCode: 'monitor:operlog:delete',
+            authCode: 'system:log:delete',
             order: 3,
           },
         ],
@@ -396,6 +382,9 @@ const MONITOR_MENUS: MenuData[] = [
     ],
   },
 ];
+
+// 监控管理菜单数据（保留空数组以备将来扩展）
+const MONITOR_MENUS: MenuData[] = [];
 
 // 递归创建菜单
 async function createMenus(
@@ -528,9 +517,11 @@ async function main() {
     console.log('\n[菜单] 创建系统菜单...');
     await createMenus(SYSTEM_MENUS);
 
-    // 5. 创建监控管理菜单
-    console.log('\n[菜单] 创建监控管理菜单...');
-    await createMenus(MONITOR_MENUS);
+    // 5. 创建监控管理菜单（如果有的话）
+    if (MONITOR_MENUS.length > 0) {
+      console.log('\n[菜单] 创建监控管理菜单...');
+      await createMenus(MONITOR_MENUS);
+    }
 
     // 6. 更新角色权限
     console.log('\n[角色] 更新角色权限...');
