@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { UserService } from '@/modules/system/user/user.service';
+import { UserStatus } from '@/modules/system/user/entities/user.entity';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -23,15 +24,19 @@ export class AuthGuard implements CanActivate {
     if (!token) {
       throw new UnauthorizedException();
     }
+    let user;
     try {
       const { id } = await this.jwtService.verifyAsync(token, {
         secret: this.configService.get('jwt.secret'),
       });
-      const user = await this.userSerivce.findOne(id);
-      request['user'] = user;
+      user = await this.userSerivce.findOne(id);
     } catch {
       throw new UnauthorizedException();
     }
+    if (!user || user.status === UserStatus.DISABLED) {
+      throw new UnauthorizedException('用户不存在或已被禁用');
+    }
+    request['user'] = user;
     return true;
   }
 

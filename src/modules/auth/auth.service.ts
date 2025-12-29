@@ -2,6 +2,7 @@ import { Injectable, HttpException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '@/common/modules/prisma';
+import { UserStatus } from '@/modules/system/user/entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 
 @Injectable()
@@ -32,6 +33,10 @@ export class AuthService {
     const isMatch = bcrypt.compareSync(password, user.password);
     if (!isMatch) {
       throw new HttpException({ message: '密码错误' }, 201);
+    }
+
+    if (user.status === UserStatus.DISABLED) {
+      throw new HttpException({ message: '用户已被停用' }, 201);
     }
 
     // 提取角色名称
