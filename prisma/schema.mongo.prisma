@@ -44,8 +44,8 @@ model User {
   username  String   @unique
   password  String
   nickName  String
-  email     String?  @unique
-  phone     String?  @unique
+  email     String?  // @unique 通过 MongoDB sparse index 实现
+  phone     String?  // @unique 通过 MongoDB sparse index 实现
   avatar    String?
   status    Int      @default(0) // 0-启用，1-停用
   deptId    String?  @db.ObjectId

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '@/common/modules/prisma';
+import { filterValidDatabaseIds } from '@/common/utils';
 import { PERMISSION_KEY } from '../decorator/permission.decorator';
 
 /**
@@ -72,13 +73,18 @@ export class PermissionGuard implements CanActivate {
     }
 
     // 查询用户拥有的启用状态角色（支持角色名或角色ID）
+    const validIds = filterValidDatabaseIds(normalizedRoleKeys);
+    const orConditions: { name?: { in: string[] }; id?: { in: string[] } }[] = [
+      { name: { in: normalizedRoleKeys } },
+    ];
+    if (validIds.length > 0) {
+      orConditions.push({ id: { in: validIds } });
+    }
+
     const roles = await this.prisma.role.findMany({
       where: {
         status: 0,
-        OR: [
-          { name: { in: normalizedRoleKeys } },
-          { id: { in: normalizedRoleKeys } },
-        ],
+        OR: orConditions,
       },
       include: {
         menus: true,

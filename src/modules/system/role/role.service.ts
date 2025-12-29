@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@/common/modules/prisma';
+import { filterValidDatabaseIds } from '@/common/utils';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { QueryRoleDto } from './dto/query-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -191,9 +192,20 @@ export class RoleService {
 
     const unique = Array.from(new Set(normalized));
 
+    // 过滤出有效的数据库 ID（兼容 MongoDB ObjectID 和 UUID）
+    const validIds = filterValidDatabaseIds(unique);
+
+    // 构建查询条件：name 始终查询，id 只查询有效的数据库 ID
+    const orConditions: { name?: { in: string[] }; id?: { in: string[] } }[] = [
+      { name: { in: unique } },
+    ];
+    if (validIds.length > 0) {
+      orConditions.push({ id: { in: validIds } });
+    }
+
     return this.prisma.role.findMany({
       where: {
-        OR: [{ name: { in: unique } }, { id: { in: unique } }],
+        OR: orConditions,
       },
       include: {
         menus: true,

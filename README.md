@@ -58,6 +58,7 @@ Nexus 是一个基于 NestJS 框架构建的后端应用程序。它提供了一
 │   │   ├── modules/       # 公共基础设施模块
 │   │   │   └── prisma/    # Prisma 数据库服务
 │   │   ├── pipes/         # 管道
+│   │   ├── utils/         # 工具函数（ID验证等）
 │   │   └── logger.ts      # 日志配置
 │   ├── config/            # 配置模块
 │   ├── main.ts            # 应用入口文件
@@ -385,6 +386,66 @@ $ pnpm init:admin
 | MySQL | `prisma/schema.mysql.prisma` | `pnpm prisma:mysql` |
 | MongoDB | `prisma/schema.mongo.prisma` | `pnpm prisma:mongo` |
 
+### **MongoDB Replica Set 配置**
+
+> ⚠️ **重要**: Prisma 需要 MongoDB 以 **Replica Set 模式**运行才能支持事务功能。单机模式的 MongoDB 无法使用。
+
+**什么是 Replica Set？**
+
+Replica Set（副本集）是 MongoDB 的高可用架构，即使只有一个节点也需要配置。Prisma 的某些操作（如关联创建、批量操作）依赖 MongoDB 事务，而事务功能仅在 Replica Set 模式下可用。
+
+#### **方案 1：Docker 快速启动（推荐）**
+
+```bash
+# 启动 MongoDB 容器
+docker run -d --name mongodb-rs \
+  -p 27017:27017 \
+  -e MONGO_INITDB_ROOT_USERNAME=admin \
+  -e MONGO_INITDB_ROOT_PASSWORD=password123 \
+  mongo:7 --replSet rs0
+
+# 等待几秒后，初始化 replica set
+docker exec -it mongodb-rs mongosh -u admin -p password123 --authenticationDatabase admin --eval "rs.initiate()"
+```
+
+`.env` 配置：
+```bash
+DATABASE_URL="mongodb://admin:password123@localhost:27017/nexus?authSource=admin&replicaSet=rs0"
+```
+
+#### **方案 2：本地 MongoDB 配置**
+
+**macOS (Homebrew)：**
+
+```bash
+# 1. 找到配置文件位置
+# Apple Silicon (M1/M2/M3): /opt/homebrew/etc/mongod.conf
+# Intel Mac: /usr/local/etc/mongod.conf
+
+# 2. 编辑配置文件，添加以下内容：
+replication:
+  replSetName: rs0
+
+# 3. 重启 MongoDB
+brew services restart mongodb-community
+
+# 4. 初始化 replica set
+mongosh --eval "rs.initiate()"
+```
+
+`.env` 配置：
+```bash
+DATABASE_URL="mongodb://localhost:27017/nexus?replicaSet=rs0"
+```
+
+#### **方案 3：MongoDB Atlas（云服务）**
+
+使用 [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) 免费套餐，自动配置好 Replica Set：
+
+```bash
+DATABASE_URL="mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/nexus?retryWrites=true&w=majority"
+```
+
 ### **数据模型**
 
 项目包含以下核心数据模型：
@@ -610,6 +671,75 @@ export class AppModule {}
 3.  `load: [configuration]`: 告诉 `ConfigModule` 使用 `configuration.ts` 中的工厂函数来加载和组织配置。
 4.  `validationSchema`: 将 `validation.ts` 中定义的 Joi 验证模式传递给配置模块，用于在启动时进行验证。
 
+
+## 公共工具函数
+
+### **ID 验证工具 (`src/common/utils/id.util.ts`)**
+
+由于项目支持多种数据库（MongoDB、MySQL、PostgreSQL），不同数据库使用不同的 ID 格式：
+
+| 数据库 | ID 格式 | 示例 |
+| :-- | :-- | :-- |
+| MongoDB | ObjectID (24位十六进制) | `507f1f77bcf86cd799439011` |
+| MySQL | UUID (36位带连字符) | `550e8400-e29b-41d4-a716-446655440000` |
+| PostgreSQL | UUID (36位带连字符) | `550e8400-e29b-41d4-a716-446655440000` |
+
+为了确保代码在不同数据库间的兼容性，项目提供了统一的 ID 验证工具函数。
+
+**工具函数：**
+
+```typescript
+import {
+  isValidObjectId,      // 验证 MongoDB ObjectID
+  isValidUuid,          // 验证 UUID
+  isValidDatabaseId,    // 兼容验证（ObjectID 或 UUID）
+  filterValidDatabaseIds // 从数组中过滤有效 ID
+} from '@/common/utils';
+
+// 示例
+isValidObjectId('507f1f77bcf86cd799439011');  // true
+isValidUuid('550e8400-e29b-41d4-a716-446655440000');  // true
+isValidDatabaseId('507f1f77bcf86cd799439011');  // true（兼容两种格式）
+isValidDatabaseId('user');  // false（非法格式）
+
+// 过滤有效 ID
+const ids = ['507f1f77bcf86cd799439011', 'user', 'invalid'];
+filterValidDatabaseIds(ids);  // ['507f1f77bcf86cd799439011']
+```
+
+**使用场景：**
+
+当需要同时使用名称和 ID 进行查询时，必须过滤有效的 ID 格式：
+
+```typescript
+// ❌ 错误：直接使用字符串查询 id 字段，MongoDB 会报错
+const roles = await prisma.role.findMany({
+  where: {
+    OR: [
+      { name: { in: ['admin', 'user'] } },
+      { id: { in: ['admin', 'user'] } },  // 'user' 不是有效的 ObjectID！
+    ],
+  },
+});
+
+// ✅ 正确：先过滤出有效的数据库 ID
+const validIds = filterValidDatabaseIds(['admin', 'user']);
+const orConditions = [{ name: { in: ['admin', 'user'] } }];
+if (validIds.length > 0) {
+  orConditions.push({ id: { in: validIds } });
+}
+const roles = await prisma.role.findMany({
+  where: { OR: orConditions },
+});
+```
+
+**为什么需要这个工具？**
+
+- **MongoDB 严格验证**：MongoDB 的 ObjectID 必须是 24 位十六进制字符串，传入 `"user"` 这样的字符串会直接报错 `Malformed ObjectID`
+- **MySQL/PostgreSQL 隐式转换**：虽然不会报错，但会产生意外的查询结果
+- **统一处理**：使用工具函数确保代码在所有数据库类型下都能正常工作
+
+---
 
 ## 公共 Filters
 

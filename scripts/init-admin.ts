@@ -492,7 +492,6 @@ async function main() {
         roleId: adminRoleId,
         menuId,
       })),
-      skipDuplicates: true,
     });
     console.log(`  [更新] admin 角色权限（${allMenuIds.length} 个菜单）`);
 

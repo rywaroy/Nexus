@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/common/modules/prisma';
+import { filterValidDatabaseIds } from '@/common/utils';
 import { CreateOperLogDto, QueryOperLogDto } from './dto/oper-log.dto';
 
 @Injectable()
@@ -112,8 +113,14 @@ export class OperLogService {
       return { deletedCount: 0 };
     }
 
+    // 过滤出有效的数据库 ID，忽略无效的
+    const validIds = filterValidDatabaseIds(ids);
+    if (validIds.length === 0) {
+      return { deletedCount: 0 };
+    }
+
     const result = await this.prisma.operLog.deleteMany({
-      where: { id: { in: ids } },
+      where: { id: { in: validIds } },
     });
 
     return { deletedCount: result.count };
