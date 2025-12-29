@@ -4,12 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model } from 'mongoose';
+import { PrismaService } from '@/common/modules/prisma';
 import { CreateMenuDto } from './dto/create-menu.dto';
 import { UpdateMenuDto } from './dto/update-menu.dto';
 import { QueryMenuDto } from './dto/query-menu.dto';
-import { Menu, MenuDocument, MenuType } from './entities/menu.entity';
+import { MenuType } from './entities/menu.entity';
 import {
   DynamicRouteNode,
   MenuNode,
@@ -20,40 +19,96 @@ import { RoleService } from '../role/role.service';
 @Injectable()
 export class MenuService {
   constructor(
-    @InjectModel(Menu.name) private readonly menuModel: Model<MenuDocument>,
+    private readonly prisma: PrismaService,
     private readonly roleService: RoleService,
   ) {}
 
   /**
    * 创建菜单
    */
-  async create(createMenuDto: CreateMenuDto): Promise<MenuDocument> {
+  async create(createMenuDto: CreateMenuDto) {
     // 检查名称是否重复
-    const exists = await this.menuModel.findOne({ name: createMenuDto.name });
+    const exists = await this.prisma.menu.findUnique({
+      where: { name: createMenuDto.name },
+    });
     if (exists) {
       throw new ConflictException('菜单名称已存在');
     }
 
     // 检查父级菜单是否存在
     if (createMenuDto.parentId) {
-      const parent = await this.menuModel.findById(createMenuDto.parentId);
+      const parent = await this.prisma.menu.findUnique({
+        where: { id: createMenuDto.parentId },
+      });
       if (!parent) {
         throw new NotFoundException('父级菜单不存在');
       }
     }
 
-    return this.menuModel.create(createMenuDto);
+    // 转换 MenuType 枚举
+    const typeMap: Record<string, string> = {
+      catalog: 'CATALOG',
+      menu: 'MENU',
+      button: 'BUTTON',
+      embedded: 'EMBEDDED',
+      link: 'LINK',
+    };
+
+    const badgeTypeMap: Record<string, string> = {
+      dot: 'DOT',
+      normal: 'NORMAL',
+    };
+
+    const badgeVariantsMap: Record<string, string> = {
+      default: 'DEFAULT',
+      destructive: 'DESTRUCTIVE',
+      primary: 'PRIMARY',
+      success: 'SUCCESS',
+      warning: 'WARNING',
+    };
+
+    return this.prisma.menu.create({
+      data: {
+        name: createMenuDto.name,
+        title: createMenuDto.title,
+        parentId: createMenuDto.parentId || null,
+        path: createMenuDto.path,
+        component: createMenuDto.component,
+        type: typeMap[createMenuDto.type] as any,
+        authCode: createMenuDto.authCode,
+        order: createMenuDto.order ?? 0,
+        status: createMenuDto.status ?? 0,
+        icon: createMenuDto.icon,
+        activeIcon: createMenuDto.activeIcon,
+        keepAlive: createMenuDto.keepAlive ?? false,
+        affixTab: createMenuDto.affixTab ?? false,
+        hideInMenu: createMenuDto.hideInMenu ?? false,
+        hideChildrenInMenu: createMenuDto.hideChildrenInMenu ?? false,
+        hideInBreadcrumb: createMenuDto.hideInBreadcrumb ?? false,
+        hideInTab: createMenuDto.hideInTab ?? false,
+        iframeSrc: createMenuDto.iframeSrc,
+        link: createMenuDto.link,
+        activePath: createMenuDto.activePath,
+        badge: createMenuDto.badge,
+        badgeType: createMenuDto.badgeType
+          ? (badgeTypeMap[createMenuDto.badgeType] as any)
+          : null,
+        badgeVariants: createMenuDto.badgeVariants
+          ? (badgeVariantsMap[createMenuDto.badgeVariants] as any)
+          : null,
+      },
+    });
   }
 
   /**
    * 查询菜单列表（返回树结构，统一格式）
    */
   async findAll(query: QueryMenuDto): Promise<MenuTreeNode[]> {
-    const filter = this.buildFilter(query);
-    const menus = await this.menuModel
-      .find(filter)
-      .sort({ order: 1, createdAt: 1 })
-      .lean();
+    const where = this.buildFilter(query);
+    const menus = await this.prisma.menu.findMany({
+      where,
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
 
     const nodes = menus.map((menu) => this.mapToMenuNode(menu));
     return this.buildTree(nodes);
@@ -62,8 +117,8 @@ export class MenuService {
   /**
    * 根据 ID 查询菜单详情
    */
-  async findOne(id: string): Promise<MenuDocument> {
-    const menu = await this.menuModel.findById(id).exec();
+  async findOne(id: string) {
+    const menu = await this.prisma.menu.findUnique({ where: { id } });
     if (!menu) {
       throw new NotFoundException('菜单不存在');
     }
@@ -73,21 +128,20 @@ export class MenuService {
   /**
    * 更新菜单
    */
-  async update(
-    id: string,
-    updateMenuDto: UpdateMenuDto,
-  ): Promise<MenuDocument> {
+  async update(id: string, updateMenuDto: UpdateMenuDto) {
     // 检查菜单是否存在
-    const menu = await this.menuModel.findById(id);
+    const menu = await this.prisma.menu.findUnique({ where: { id } });
     if (!menu) {
       throw new NotFoundException('菜单不存在');
     }
 
     // 检查名称是否与其他菜单重复
     if (updateMenuDto.name && updateMenuDto.name !== menu.name) {
-      const exists = await this.menuModel.findOne({
-        name: updateMenuDto.name,
-        _id: { $ne: id },
+      const exists = await this.prisma.menu.findFirst({
+        where: {
+          name: updateMenuDto.name,
+          NOT: { id },
+        },
       });
       if (exists) {
         throw new ConflictException('菜单名称已存在');
@@ -99,7 +153,9 @@ export class MenuService {
       if (updateMenuDto.parentId === id) {
         throw new BadRequestException('父级菜单不能是自己');
       }
-      const parent = await this.menuModel.findById(updateMenuDto.parentId);
+      const parent = await this.prisma.menu.findUnique({
+        where: { id: updateMenuDto.parentId },
+      });
       if (!parent) {
         throw new NotFoundException('父级菜单不存在');
       }
@@ -109,11 +165,63 @@ export class MenuService {
       }
     }
 
-    const updated = await this.menuModel
-      .findByIdAndUpdate(id, updateMenuDto, { new: true })
-      .exec();
+    // 转换枚举
+    const typeMap: Record<string, string> = {
+      catalog: 'CATALOG',
+      menu: 'MENU',
+      button: 'BUTTON',
+      embedded: 'EMBEDDED',
+      link: 'LINK',
+    };
 
-    return updated;
+    const badgeTypeMap: Record<string, string> = {
+      dot: 'DOT',
+      normal: 'NORMAL',
+    };
+
+    const badgeVariantsMap: Record<string, string> = {
+      default: 'DEFAULT',
+      destructive: 'DESTRUCTIVE',
+      primary: 'PRIMARY',
+      success: 'SUCCESS',
+      warning: 'WARNING',
+    };
+
+    return this.prisma.menu.update({
+      where: { id },
+      data: {
+        name: updateMenuDto.name,
+        title: updateMenuDto.title,
+        parentId:
+          updateMenuDto.parentId !== undefined
+            ? updateMenuDto.parentId || null
+            : undefined,
+        path: updateMenuDto.path,
+        component: updateMenuDto.component,
+        type: updateMenuDto.type ? (typeMap[updateMenuDto.type] as any) : undefined,
+        authCode: updateMenuDto.authCode,
+        order: updateMenuDto.order,
+        status: updateMenuDto.status,
+        icon: updateMenuDto.icon,
+        activeIcon: updateMenuDto.activeIcon,
+        keepAlive: updateMenuDto.keepAlive,
+        affixTab: updateMenuDto.affixTab,
+        hideInMenu: updateMenuDto.hideInMenu,
+        hideChildrenInMenu: updateMenuDto.hideChildrenInMenu,
+        hideInBreadcrumb: updateMenuDto.hideInBreadcrumb,
+        hideInTab: updateMenuDto.hideInTab,
+        iframeSrc: updateMenuDto.iframeSrc,
+        link: updateMenuDto.link,
+        activePath: updateMenuDto.activePath,
+        badge: updateMenuDto.badge,
+        badgeType: updateMenuDto.badgeType
+          ? (badgeTypeMap[updateMenuDto.badgeType] as any)
+          : undefined,
+        badgeVariants: updateMenuDto.badgeVariants
+          ? (badgeVariantsMap[updateMenuDto.badgeVariants] as any)
+          : undefined,
+      },
+    });
   }
 
   /**
@@ -121,12 +229,17 @@ export class MenuService {
    */
   async delete(id: string): Promise<void> {
     // 检查是否存在子菜单
-    const hasChildren = await this.menuModel.countDocuments({ parentId: id });
+    const hasChildren = await this.prisma.menu.count({
+      where: { parentId: id },
+    });
     if (hasChildren > 0) {
       throw new BadRequestException('存在子菜单，无法删除');
     }
 
-    const result = await this.menuModel.findByIdAndDelete(id);
+    const result = await this.prisma.menu
+      .delete({ where: { id } })
+      .catch(() => null);
+
     if (!result) {
       throw new NotFoundException('菜单不存在');
     }
@@ -136,10 +249,10 @@ export class MenuService {
    * 获取菜单树（用于选择器，只返回启用的菜单）
    */
   async getMenuTree(): Promise<MenuTreeNode[]> {
-    const menus = await this.menuModel
-      .find({ status: 0 })
-      .sort({ order: 1, createdAt: 1 })
-      .lean();
+    const menus = await this.prisma.menu.findMany({
+      where: { status: 0 },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
 
     const nodes = menus.map((menu) => this.mapToMenuNode(menu));
     return this.buildTree(nodes);
@@ -150,10 +263,10 @@ export class MenuService {
    * 排除按钮类型，只返回启用的菜单
    */
   async getRoutes(): Promise<DynamicRouteNode[]> {
-    const menus = await this.menuModel
-      .find({ status: 0, type: { $ne: MenuType.BUTTON } })
-      .sort({ order: 1, createdAt: 1 })
-      .lean();
+    const menus = await this.prisma.menu.findMany({
+      where: { status: 0, type: { not: 'BUTTON' } },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
 
     const nodes = menus.map((menu) => this.mapToRouteNode(menu));
     return this.buildRouteTree(nodes, menus);
@@ -162,7 +275,6 @@ export class MenuService {
   /**
    * 根据用户角色获取动态路由
    * admin 角色拥有所有权限，其他角色根据 permissions 过滤
-   * @param userRoles 用户角色名称数组
    */
   async getRoutesByRoles(userRoles: string[]): Promise<DynamicRouteNode[]> {
     // admin 角色拥有所有权限
@@ -178,12 +290,14 @@ export class MenuService {
       // 跳过停用的角色
       if (role.status === 1) continue;
 
-      for (const menuId of role.permissions ?? []) {
-        // permissions 中可能包含 '*' 表示所有权限
-        if (menuId === '*') {
-          return this.getRoutes();
-        }
-        allowedMenuIds.add(menuId);
+      // 检查是否为超级管理员
+      if (role.isSuper) {
+        return this.getRoutes();
+      }
+
+      // 从 RoleMenu 关联中获取菜单ID
+      for (const rm of role.menus ?? []) {
+        allowedMenuIds.add(rm.menuId);
       }
     }
 
@@ -199,38 +313,35 @@ export class MenuService {
 
     // 查询菜单（父级菜单即使停用也要包含，以保证树结构完整）
     // 但按钮类型不需要
-    const menus = await this.menuModel
-      .find({
-        _id: { $in: allMenuIds },
-        type: { $ne: MenuType.BUTTON },
-      })
-      .sort({ order: 1, createdAt: 1 })
-      .lean();
+    const menus = await this.prisma.menu.findMany({
+      where: {
+        id: { in: allMenuIds },
+        type: { not: 'BUTTON' },
+      },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
 
-    // 过滤：只有授权的菜单及其启用的父级目录才显示
-    // 父级目录即使停用也要包含（用于结构），但会被标记为隐藏
     const nodes = menus.map((menu) => this.mapToRouteNode(menu));
     return this.buildRouteTree(nodes, menus);
   }
 
   /**
    * 获取菜单ID及其所有祖先菜单ID（批量优化版本）
-   * 确保返回的菜单树结构完整
    */
   private async getMenuIdsWithAncestors(menuIds: string[]): Promise<string[]> {
     const allIds = new Set<string>(menuIds);
 
     // 批量获取所有相关菜单
-    const menusToCheck = await this.menuModel
-      .find({ _id: { $in: menuIds } })
-      .select('_id parentId')
-      .lean();
+    const menusToCheck = await this.prisma.menu.findMany({
+      where: { id: { in: menuIds } },
+      select: { id: true, parentId: true },
+    });
 
     // 收集所有父级ID
     const parentIds = new Set<string>();
     for (const menu of menusToCheck) {
       if (menu.parentId) {
-        parentIds.add(menu.parentId.toString());
+        parentIds.add(menu.parentId);
       }
     }
 
@@ -248,17 +359,16 @@ export class MenuService {
       if (newParentIds.length === 0) break;
 
       // 批量查询这些父级的父级
-      const parentMenus = await this.menuModel
-        .find({ _id: { $in: newParentIds } })
-        .select('_id parentId')
-        .lean();
+      const parentMenus = await this.prisma.menu.findMany({
+        where: { id: { in: newParentIds } },
+        select: { id: true, parentId: true },
+      });
 
       parentIds.clear();
       for (const menu of parentMenus) {
         if (menu.parentId) {
-          const grandParentId = menu.parentId.toString();
-          if (!allIds.has(grandParentId)) {
-            parentIds.add(grandParentId);
+          if (!allIds.has(menu.parentId)) {
+            parentIds.add(menu.parentId);
           }
         }
       }
@@ -268,46 +378,94 @@ export class MenuService {
   }
 
   /**
-   * 检查菜单名称是否存在
+   * 根据用户角色获取权限码列表
    */
-  async checkNameExists(name: string, excludeId?: string): Promise<boolean> {
-    const filter: FilterQuery<MenuDocument> = { name };
-    if (excludeId) {
-      filter._id = { $ne: excludeId };
+  async getAccessCodesByRoles(userRoles: string[]): Promise<string[]> {
+    // admin 角色拥有所有权限
+    if (userRoles.includes('admin')) {
+      return this.getAllAccessCodes();
     }
-    const count = await this.menuModel.countDocuments(filter);
-    return count > 0;
+
+    // 获取用户所有角色的权限（菜单ID列表）
+    const roles = await this.roleService.findByNames(userRoles);
+    const allowedMenuIds = new Set<string>();
+
+    for (const role of roles) {
+      // 跳过停用的角色
+      if (role.status === 1) continue;
+
+      // 检查是否为超级管理员
+      if (role.isSuper) {
+        return this.getAllAccessCodes();
+      }
+
+      // 从 RoleMenu 关联中获取菜单ID
+      for (const rm of role.menus ?? []) {
+        allowedMenuIds.add(rm.menuId);
+      }
+    }
+
+    // 如果没有任何权限，返回空数组
+    if (allowedMenuIds.size === 0) {
+      return [];
+    }
+
+    // 查询这些菜单的 authCode（仅启用状态的按钮类型）
+    const menus = await this.prisma.menu.findMany({
+      where: {
+        id: { in: Array.from(allowedMenuIds) },
+        status: 0,
+        authCode: { not: null },
+      },
+      select: { authCode: true },
+    });
+
+    return menus
+      .map((menu) => menu.authCode)
+      .filter((code): code is string => Boolean(code));
   }
 
   /**
-   * 检查路由路径是否存在
+   * 获取所有启用状态的权限码
    */
-  async checkPathExists(path: string, excludeId?: string): Promise<boolean> {
-    const filter: FilterQuery<MenuDocument> = { path };
-    if (excludeId) {
-      filter._id = { $ne: excludeId };
-    }
-    const count = await this.menuModel.countDocuments(filter);
-    return count > 0;
+  private async getAllAccessCodes(): Promise<string[]> {
+    const menus = await this.prisma.menu.findMany({
+      where: {
+        status: 0,
+        authCode: { not: null },
+      },
+      select: { authCode: true },
+    });
+
+    return menus
+      .map((menu) => menu.authCode)
+      .filter((code): code is string => Boolean(code));
   }
 
   /**
    * 构建查询过滤条件
    */
-  private buildFilter(query: QueryMenuDto): FilterQuery<MenuDocument> {
-    const filter: FilterQuery<MenuDocument> = {};
+  private buildFilter(query: QueryMenuDto): any {
+    const filter: any = {};
 
     if (query.name) {
-      filter.name = { $regex: query.name, $options: 'i' };
+      filter.name = { contains: query.name };
     }
     if (query.title) {
-      filter.title = { $regex: query.title, $options: 'i' };
+      filter.title = { contains: query.title };
     }
     if (query.status !== undefined) {
       filter.status = query.status;
     }
     if (query.type) {
-      filter.type = query.type;
+      const typeMap: Record<string, string> = {
+        catalog: 'CATALOG',
+        menu: 'MENU',
+        button: 'BUTTON',
+        embedded: 'EMBEDDED',
+        link: 'LINK',
+      };
+      filter.type = typeMap[query.type];
     }
     if (query.parentId) {
       filter.parentId = query.parentId;
@@ -320,13 +478,37 @@ export class MenuService {
    * 将数据库菜单转换为统一的 MenuNode 格式
    */
   private mapToMenuNode(menu: any): MenuNode {
+    // 枚举值转换回小写
+    const typeMap: Record<string, MenuType> = {
+      CATALOG: MenuType.CATALOG,
+      MENU: MenuType.MENU,
+      BUTTON: MenuType.BUTTON,
+      EMBEDDED: MenuType.EMBEDDED,
+      LINK: MenuType.LINK,
+    };
+
+    const badgeTypeMap: Record<string, string> = {
+      DOT: 'dot',
+      NORMAL: 'normal',
+    };
+
+    const badgeVariantsMap: Record<string, string> = {
+      DEFAULT: 'default',
+      DESTRUCTIVE: 'destructive',
+      PRIMARY: 'primary',
+      SUCCESS: 'success',
+      WARNING: 'warning',
+    };
+
+    const menuType = typeMap[menu.type] || MenuType.MENU;
+
     // 按钮类型只需要基本字段和 title
-    if (menu.type === MenuType.BUTTON) {
+    if (menuType === MenuType.BUTTON) {
       return {
-        id: menu._id.toString(),
-        pid: menu.parentId ? menu.parentId.toString() : null,
+        id: menu.id,
+        pid: menu.parentId || null,
         name: menu.name,
-        type: menu.type,
+        type: menuType,
         status: menu.status ?? 0,
         authCode: menu.authCode,
         meta: {
@@ -337,12 +519,12 @@ export class MenuService {
 
     // 其他类型返回完整结构
     return {
-      id: menu._id.toString(),
-      pid: menu.parentId ? menu.parentId.toString() : null,
+      id: menu.id,
+      pid: menu.parentId || null,
       name: menu.name,
       path: menu.path,
       component: menu.component,
-      type: menu.type,
+      type: menuType,
       status: menu.status ?? 0,
       authCode: menu.authCode,
       meta: {
@@ -356,8 +538,10 @@ export class MenuService {
         hideInBreadcrumb: menu.hideInBreadcrumb ?? false,
         hideInTab: menu.hideInTab ?? false,
         badge: menu.badge,
-        badgeType: menu.badgeType,
-        badgeVariants: menu.badgeVariants,
+        badgeType: menu.badgeType ? badgeTypeMap[menu.badgeType] : undefined,
+        badgeVariants: menu.badgeVariants
+          ? badgeVariantsMap[menu.badgeVariants]
+          : undefined,
         iframeSrc: menu.iframeSrc,
         link: menu.link,
         activePath: menu.activePath,
@@ -406,12 +590,27 @@ export class MenuService {
   }
 
   /**
-   * 将数据库菜单转换为动态路由节点格式（符合 vben RouteRecordStringComponent）
+   * 将数据库菜单转换为动态路由节点格式
    */
-  private mapToRouteNode(menu: any): DynamicRouteNode & { _id: string; _pid: string | null } {
+  private mapToRouteNode(
+    menu: any,
+  ): DynamicRouteNode & { _id: string; _pid: string | null } {
+    const badgeTypeMap: Record<string, string> = {
+      DOT: 'dot',
+      NORMAL: 'normal',
+    };
+
+    const badgeVariantsMap: Record<string, string> = {
+      DEFAULT: 'default',
+      DESTRUCTIVE: 'destructive',
+      PRIMARY: 'primary',
+      SUCCESS: 'success',
+      WARNING: 'warning',
+    };
+
     const node: DynamicRouteNode & { _id: string; _pid: string | null } = {
-      _id: menu._id.toString(),
-      _pid: menu.parentId ? menu.parentId.toString() : null,
+      _id: menu.id,
+      _pid: menu.parentId || null,
       name: menu.name,
       path: menu.path,
       meta: {
@@ -425,8 +624,10 @@ export class MenuService {
         hideInBreadcrumb: menu.hideInBreadcrumb ?? false,
         hideInTab: menu.hideInTab ?? false,
         badge: menu.badge,
-        badgeType: menu.badgeType,
-        badgeVariants: menu.badgeVariants,
+        badgeType: menu.badgeType ? badgeTypeMap[menu.badgeType] : undefined,
+        badgeVariants: menu.badgeVariants
+          ? badgeVariantsMap[menu.badgeVariants]
+          : undefined,
         iframeSrc: menu.iframeSrc,
         link: menu.link,
         activePath: menu.activePath,
@@ -435,7 +636,7 @@ export class MenuService {
     };
 
     // 只有 menu 类型才有 component
-    if (menu.type === MenuType.MENU && menu.component) {
+    if (menu.type === 'MENU' && menu.component) {
       node.component = menu.component;
     }
 
@@ -449,7 +650,10 @@ export class MenuService {
     nodes: (DynamicRouteNode & { _id: string; _pid: string | null })[],
     _rawMenus: any[],
   ): DynamicRouteNode[] {
-    const map = new Map<string, DynamicRouteNode & { _id: string; _pid: string | null }>();
+    const map = new Map<
+      string,
+      DynamicRouteNode & { _id: string; _pid: string | null }
+    >();
     const roots: DynamicRouteNode[] = [];
 
     // 先将所有节点放入 Map
@@ -537,74 +741,41 @@ export class MenuService {
         return true;
       }
 
-      const menu = await this.menuModel.findById(currentId).lean();
+      const menu = await this.prisma.menu.findUnique({
+        where: { id: currentId },
+        select: { parentId: true },
+      });
+
       if (!menu || !menu.parentId) {
         break;
       }
-      currentId = menu.parentId.toString();
+      currentId = menu.parentId;
     }
 
     return false;
   }
 
   /**
-   * 根据用户角色获取权限码列表
-   * admin 角色返回所有权限码，其他角色根据 permissions 过滤
-   * @param userRoles 用户角色名称数组
+   * 检查菜单名称是否存在
    */
-  async getAccessCodesByRoles(userRoles: string[]): Promise<string[]> {
-    // admin 角色拥有所有权限
-    if (userRoles.includes('admin')) {
-      return this.getAllAccessCodes();
+  async checkNameExists(name: string, excludeId?: string): Promise<boolean> {
+    const where: any = { name };
+    if (excludeId) {
+      where.NOT = { id: excludeId };
     }
-
-    // 获取用户所有角色的权限（菜单ID列表）
-    const roles = await this.roleService.findByNames(userRoles);
-    const allowedMenuIds = new Set<string>();
-
-    for (const role of roles) {
-      // 跳过停用的角色
-      if (role.status === 1) continue;
-
-      for (const menuId of role.permissions ?? []) {
-        // permissions 中可能包含 '*' 表示所有权限
-        if (menuId === '*') {
-          return this.getAllAccessCodes();
-        }
-        allowedMenuIds.add(menuId);
-      }
-    }
-
-    // 如果没有任何权限，返回空数组
-    if (allowedMenuIds.size === 0) {
-      return [];
-    }
-
-    // 查询这些菜单的 authCode（仅启用状态的按钮类型）
-    const menus = await this.menuModel
-      .find({
-        _id: { $in: Array.from(allowedMenuIds) },
-        status: 0,
-        authCode: { $exists: true, $ne: '' },
-      })
-      .select('authCode')
-      .lean();
-
-    return menus.map((menu) => menu.authCode).filter(Boolean) as string[];
+    const count = await this.prisma.menu.count({ where });
+    return count > 0;
   }
 
   /**
-   * 获取所有启用状态的权限码
+   * 检查路由路径是否存在
    */
-  private async getAllAccessCodes(): Promise<string[]> {
-    const menus = await this.menuModel
-      .find({
-        status: 0,
-        authCode: { $exists: true, $ne: '' },
-      })
-      .select('authCode')
-      .lean();
-
-    return menus.map((menu) => menu.authCode).filter(Boolean) as string[];
+  async checkPathExists(path: string, excludeId?: string): Promise<boolean> {
+    const where: any = { path };
+    if (excludeId) {
+      where.NOT = { id: excludeId };
+    }
+    const count = await this.prisma.menu.count({ where });
+    return count > 0;
   }
 }

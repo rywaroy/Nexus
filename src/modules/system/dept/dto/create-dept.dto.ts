@@ -1,7 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
-  IsMongoId,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -9,6 +8,7 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
+import { IsId } from '@/common/decorators/is-id.decorator';
 
 /**
  * 创建部门 DTO
@@ -25,7 +25,7 @@ export class CreateDeptDto {
   @IsOptional()
   @Transform(({ value }) => (value === '' ? null : value))
   @ValidateIf((_, value) => value !== null && value !== undefined)
-  @IsMongoId({ message: '父级部门ID格式不正确' })
+  @IsId({ message: '父级部门ID格式不正确' })
   pid?: string | null;
 
   /** 状态：0-启用，1-停用 */

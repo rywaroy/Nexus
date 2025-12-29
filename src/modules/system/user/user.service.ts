@@ -3,17 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model, Types } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
+import { PrismaService } from '@/common/modules/prisma';
 import {
   CreateUserDto,
   QueryUserDto,
   RegisterUserDto,
   UpdateUserDto,
 } from './dto';
-import { User, UserDocument } from './entities/user.entity';
-import { Role, RoleDocument } from '../role/entities/role.entity';
 
 /** 用户响应 DTO（用于返回给前端） */
 export interface UserResponseDto {
@@ -38,17 +35,7 @@ export interface UserListResponse {
 
 @Injectable()
 export class UserService {
-  /** 角色ID到名称的缓存映射 */
-  private roleIdToNameCache: Map<string, string> = new Map();
-  /** 缓存过期时间（毫秒） */
-  private cacheExpireTime = 0;
-  /** 缓存有效期（5分钟） */
-  private readonly CACHE_TTL = 5 * 60 * 1000;
-
-  constructor(
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
-    @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
-  ) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * 创建用户（管理员接口）
@@ -62,13 +49,37 @@ export class UserService {
     });
 
     const salt = await bcrypt.genSalt(10);
-    const roles = this.normalizeRoles(dto.roles);
+    const roleNames = this.normalizeRoles(dto.roles);
 
-    const created = await this.userModel.create({
-      ...dto,
-      roles,
-      password: await bcrypt.hash(dto.password, salt),
-      deptId: dto.deptId ? new Types.ObjectId(dto.deptId) : undefined,
+    // 查找角色
+    const roles = await this.prisma.role.findMany({
+      where: { name: { in: roleNames } },
+    });
+
+    const created = await this.prisma.user.create({
+      data: {
+        username: dto.username,
+        password: await bcrypt.hash(dto.password, salt),
+        nickName: dto.nickName,
+        email: dto.email || null,
+        phone: dto.phone || null,
+        avatar: dto.avatar,
+        status: dto.status ?? 0,
+        deptId: dto.deptId || null,
+        remark: dto.remark,
+        roles: {
+          create: roles.map((role) => ({
+            roleId: role.id,
+          })),
+        },
+      },
+      include: {
+        roles: {
+          include: {
+            role: true,
+          },
+        },
+      },
     });
 
     return this.toResponse(created);
@@ -83,12 +94,30 @@ export class UserService {
 
     const salt = await bcrypt.genSalt(10);
 
-    const created = await this.userModel.create({
-      username: dto.username,
-      nickName: dto.nickName,
-      password: await bcrypt.hash(dto.password, salt),
-      roles: ['user'],
-      status: 0,
+    // 查找默认 user 角色
+    const defaultRole = await this.prisma.role.findUnique({
+      where: { name: 'user' },
+    });
+
+    const created = await this.prisma.user.create({
+      data: {
+        username: dto.username,
+        nickName: dto.nickName,
+        password: await bcrypt.hash(dto.password, salt),
+        status: 0,
+        roles: defaultRole
+          ? {
+              create: [{ roleId: defaultRole.id }],
+            }
+          : undefined,
+      },
+      include: {
+        roles: {
+          include: {
+            role: true,
+          },
+        },
+      },
     });
 
     return this.toResponse(created);
@@ -108,41 +137,47 @@ export class UserService {
       deptId,
     } = query;
 
-    const filter: FilterQuery<UserDocument> = {};
+    const where: any = {};
 
     // 模糊匹配
     if (username) {
-      filter.username = { $regex: username, $options: 'i' };
+      where.username = { contains: username };
     }
     if (nickName) {
-      filter.nickName = { $regex: nickName, $options: 'i' };
+      where.nickName = { contains: nickName };
     }
     // 精确匹配
     if (phone) {
-      filter.phone = phone;
+      where.phone = phone;
     }
     if (status !== undefined) {
-      filter.status = status;
+      where.status = status;
     }
-    if (deptId && Types.ObjectId.isValid(deptId)) {
-      filter.deptId = new Types.ObjectId(deptId);
+    if (deptId) {
+      where.deptId = deptId;
     }
 
     const skip = (page - 1) * pageSize;
 
     const [list, total] = await Promise.all([
-      this.userModel
-        .find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(pageSize)
-        .select('-password')
-        .lean(),
-      this.userModel.countDocuments(filter),
+      this.prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+        include: {
+          roles: {
+            include: {
+              role: true,
+            },
+          },
+        },
+      }),
+      this.prisma.user.count({ where }),
     ]);
 
     return {
-      list: await Promise.all(list.map((item) => this.toResponse(item))),
+      list: list.map((item) => this.toResponse(item)),
       total,
     };
   };
@@ -151,10 +186,16 @@ export class UserService {
    * 根据ID查询用户详情
    */
   findById = async (id: string): Promise<UserResponseDto> => {
-    const user = await this.userModel
-      .findById(id)
-      .select('-password')
-      .lean();
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        roles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    });
 
     if (!user) {
       throw new NotFoundException('用户不存在');
@@ -167,7 +208,7 @@ export class UserService {
    * 更新用户信息
    */
   update = async (id: string, dto: UpdateUserDto): Promise<UserResponseDto> => {
-    const existed = await this.userModel.findById(id);
+    const existed = await this.prisma.user.findUnique({ where: { id } });
     if (!existed) {
       throw new NotFoundException('用户不存在');
     }
@@ -179,28 +220,42 @@ export class UserService {
       excludeId: id,
     });
 
-    const updateData: Partial<User> = {};
+    // 处理角色更新
+    let rolesUpdate: any = undefined;
+    if (dto.roles !== undefined) {
+      const roleNames = this.normalizeRoles(dto.roles);
+      const roles = await this.prisma.role.findMany({
+        where: { name: { in: roleNames } },
+      });
 
-    if (dto.nickName !== undefined) updateData.nickName = dto.nickName;
-    if (dto.email !== undefined) updateData.email = dto.email || undefined;
-    if (dto.phone !== undefined) updateData.phone = dto.phone || undefined;
-    if (dto.avatar !== undefined) updateData.avatar = dto.avatar;
-    if (dto.status !== undefined) updateData.status = dto.status;
-    if (dto.remark !== undefined) updateData.remark = dto.remark;
-    if (dto.roles !== undefined) updateData.roles = this.normalizeRoles(dto.roles);
-    if (dto.deptId !== undefined) {
-      updateData.deptId = dto.deptId
-        ? new Types.ObjectId(dto.deptId)
-        : undefined;
+      rolesUpdate = {
+        deleteMany: {},
+        create: roles.map((role) => ({
+          roleId: role.id,
+        })),
+      };
     }
 
-    const updated = await this.userModel
-      .findByIdAndUpdate(id, updateData, { new: true })
-      .select('-password');
-
-    if (!updated) {
-      throw new NotFoundException('用户不存在');
-    }
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: {
+        nickName: dto.nickName,
+        email: dto.email === '' ? null : dto.email,
+        phone: dto.phone === '' ? null : dto.phone,
+        avatar: dto.avatar,
+        status: dto.status,
+        remark: dto.remark,
+        deptId: dto.deptId === '' ? null : dto.deptId,
+        roles: rolesUpdate,
+      },
+      include: {
+        roles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    });
 
     return this.toResponse(updated);
   };
@@ -209,7 +264,9 @@ export class UserService {
    * 删除用户
    */
   remove = async (id: string): Promise<{ id: string }> => {
-    const deleted = await this.userModel.findByIdAndDelete(id);
+    const deleted = await this.prisma.user
+      .delete({ where: { id } })
+      .catch(() => null);
     if (!deleted) {
       throw new NotFoundException('用户不存在');
     }
@@ -220,9 +277,19 @@ export class UserService {
    * 更新用户状态
    */
   updateStatus = async (id: string, status: number): Promise<UserResponseDto> => {
-    const updated = await this.userModel
-      .findByIdAndUpdate(id, { status }, { new: true })
-      .select('-password');
+    const updated = await this.prisma.user
+      .update({
+        where: { id },
+        data: { status },
+        include: {
+          roles: {
+            include: {
+              role: true,
+            },
+          },
+        },
+      })
+      .catch(() => null);
 
     if (!updated) {
       throw new NotFoundException('用户不存在');
@@ -235,24 +302,41 @@ export class UserService {
    * 重置用户密码
    */
   resetPassword = async (id: string, password: string): Promise<UserResponseDto> => {
-    const user = await this.userModel.findById(id);
+    const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
       throw new NotFoundException('用户不存在');
     }
 
     const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
-    await user.save();
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { password: await bcrypt.hash(password, salt) },
+      include: {
+        roles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    });
 
-    return this.toResponse(user);
+    return this.toResponse(updated);
   };
 
   /**
    * 内部方法：根据ID查询用户（用于认证守卫）
-   * 返回完整的 UserDocument，不排除密码
    */
-  findOne = (id: string): Promise<UserDocument> => {
-    return this.userModel.findById(id).select('-password').exec();
+  findOne = async (id: string) => {
+    return this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        roles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    });
   };
 
   /**
@@ -263,71 +347,23 @@ export class UserService {
   };
 
   /**
-   * 刷新角色ID到名称的缓存
+   * 将 Prisma 记录转换为前端响应格式
    */
-  private async refreshRoleCache(): Promise<void> {
-    const now = Date.now();
-    if (now < this.cacheExpireTime && this.roleIdToNameCache.size > 0) {
-      return;
-    }
-
-    try {
-      const roles = await this.roleModel.find().select('_id name').lean();
-      this.roleIdToNameCache.clear();
-      for (const role of roles) {
-        this.roleIdToNameCache.set(role._id.toString(), role.name);
-      }
-      this.cacheExpireTime = now + this.CACHE_TTL;
-    } catch {
-      // 查询失败时保持现有缓存，避免影响用户接口
-    }
-  }
-
-  /**
-   * 将角色ID数组转换为角色名称数组
-   * 兼容：如果已经是角色名称则保持不变
-   */
-  private async normalizeRolesToNames(roles: string[]): Promise<string[]> {
-    if (!Array.isArray(roles) || roles.length === 0) {
-      return [];
-    }
-
-    await this.refreshRoleCache();
-
-    const roleNameSet = new Set(this.roleIdToNameCache.values());
-
-    return roles.map((role) => {
-      // 如果已经是角色名称，直接返回
-      if (roleNameSet.has(role)) {
-        return role;
-      }
-      // 如果是角色ID，转换为名称
-      const name = this.roleIdToNameCache.get(role);
-      return name ?? role;
-    });
-  }
-
-  /**
-   * 将 MongoDB 文档转换为前端响应格式
-   */
-  private toResponse = async (doc: UserDocument | any): Promise<UserResponseDto> => {
-    const obj = doc.toObject ? doc.toObject() : doc;
-    const roles = Array.isArray(obj.roles) ? obj.roles : [];
+  private toResponse = (user: any): UserResponseDto => {
+    const roles = user.roles?.map((ur: any) => ur.role?.name).filter(Boolean) || [];
 
     return {
-      id: obj._id?.toString(),
-      username: obj.username,
-      nickName: obj.nickName,
-      roles: await this.normalizeRolesToNames(roles),
-      email: obj.email,
-      phone: obj.phone,
-      avatar: obj.avatar,
-      status: obj.status ?? 0,
-      deptId: obj.deptId?.toString(),
-      remark: obj.remark,
-      createTime: obj.createdAt
-        ? new Date(obj.createdAt).toISOString()
-        : undefined,
+      id: user.id,
+      username: user.username,
+      nickName: user.nickName,
+      roles,
+      email: user.email || undefined,
+      phone: user.phone || undefined,
+      avatar: user.avatar || undefined,
+      status: user.status ?? 0,
+      deptId: user.deptId || undefined,
+      remark: user.remark || undefined,
+      createTime: user.createdAt ? new Date(user.createdAt).toISOString() : undefined,
     };
   };
 
@@ -340,7 +376,7 @@ export class UserService {
     phone?: string;
     excludeId?: string;
   }): Promise<void> => {
-    const orConditions: FilterQuery<UserDocument>[] = [];
+    const orConditions: any[] = [];
 
     if (params.username) {
       orConditions.push({ username: params.username });
@@ -354,14 +390,14 @@ export class UserService {
 
     if (orConditions.length === 0) return;
 
-    const filter: FilterQuery<UserDocument> = { $or: orConditions };
+    const where: any = { OR: orConditions };
 
     // 排除自身（用于更新时）
     if (params.excludeId) {
-      filter._id = { $ne: new Types.ObjectId(params.excludeId) };
+      where.NOT = { id: params.excludeId };
     }
 
-    const existed = await this.userModel.findOne(filter).lean();
+    const existed = await this.prisma.user.findFirst({ where });
 
     if (!existed) return;
 

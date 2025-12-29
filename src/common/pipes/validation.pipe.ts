@@ -23,7 +23,7 @@ export class ValidationPipe implements PipeTransform<any> {
         HttpStatus.BAD_REQUEST,
       );
     }
-    return value;
+    return object;
   }
 
   private toValidate(metatype: Type<any>): boolean {

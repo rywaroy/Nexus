@@ -6,6 +6,11 @@
 /uploads
 /public
 
+# Prisma
+# 动态生成的 schema.prisma（由 prisma:xxx 脚本生成）
+prisma/schema.prisma
+# 保留源 schema 文件：schema.postgres.prisma, schema.mysql.prisma, schema.mongo.prisma
+
 # Logs
 logs
 *.log

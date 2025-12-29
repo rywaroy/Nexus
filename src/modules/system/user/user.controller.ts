@@ -59,7 +59,7 @@ export class UserController {
   @ApiOperation({ summary: '获取当前登录用户信息' })
   async getInfo(@Request() req) {
     // 使用 findById 返回标准化格式，避免暴露内部字段
-    return this.userService.findById(req.user._id.toString());
+    return this.userService.findById(req.user.id);
   }
 
   /**

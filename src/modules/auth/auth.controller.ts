@@ -12,7 +12,7 @@ export class AuthController {
     const token = await this.authService.createToken(user);
     return {
       accessToken: token,
-      id: user._id,
+      id: user.id,
       username: user.username,
       roles: user.roles,
     };

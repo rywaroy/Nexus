@@ -31,7 +31,7 @@ export class HttpExceptionFilter implements ExceptionFilter<HttpException> {
       error,
     };
     logger.error(
-      `${request?.method} ${request?.url} ${request.user && request.user._id.toString()} ${JSON.stringify(request.query)}  ${JSON.stringify(request.body)} ${JSON.stringify(errorResponse)}`,
+      `${request?.method} ${request?.url} ${request.user && request.user.id} ${JSON.stringify(request.query)}  ${JSON.stringify(request.body)} ${JSON.stringify(errorResponse)}`,
     );
     if (status === 401) {
       response.status(401).json(errorResponse);

@@ -4,12 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model } from 'mongoose';
+import { PrismaService } from '@/common/modules/prisma';
 import { CreateDeptDto } from './dto/create-dept.dto';
 import { UpdateDeptDto } from './dto/update-dept.dto';
 import { QueryDeptDto } from './dto/query-dept.dto';
-import { Dept, DeptDocument } from './entities/dept.entity';
 
 /**
  * 部门树节点返回格式（对齐前端期望）
@@ -26,9 +24,7 @@ export interface DeptTreeNode {
 
 @Injectable()
 export class DeptService {
-  constructor(
-    @InjectModel(Dept.name) private readonly deptModel: Model<DeptDocument>,
-  ) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * 创建部门
@@ -42,9 +38,13 @@ export class DeptService {
     // 校验同级名称唯一
     await this.ensureNameUnique(dto.name, pid);
 
-    const created = await this.deptModel.create({
-      ...dto,
-      pid,
+    const created = await this.prisma.dept.create({
+      data: {
+        name: dto.name,
+        pid,
+        status: dto.status ?? 0,
+        remark: dto.remark,
+      },
     });
 
     return this.toTreeNode(created);
@@ -54,21 +54,21 @@ export class DeptService {
    * 获取部门树列表
    */
   async findAll(query: QueryDeptDto): Promise<DeptTreeNode[]> {
-    const filter: FilterQuery<DeptDocument> = {};
+    const where: any = {};
 
     if (query.status !== undefined) {
-      filter.status = query.status;
+      where.status = query.status;
     }
     if (query.name) {
-      filter.name = { $regex: query.name, $options: 'i' };
+      where.name = { contains: query.name };
     }
 
-    const list = await this.deptModel
-      .find(filter)
-      .sort({ createdAt: 1 })
-      .lean();
+    const list = await this.prisma.dept.findMany({
+      where,
+      orderBy: { createdAt: 'asc' },
+    });
 
-    const nodes = list.map((item) => this.toTreeNode(item as any));
+    const nodes = list.map((item) => this.toTreeNode(item));
     return this.buildTree(nodes);
   }
 
@@ -76,13 +76,13 @@ export class DeptService {
    * 更新部门
    */
   async update(id: string, dto: UpdateDeptDto): Promise<DeptTreeNode> {
-    const dept = await this.deptModel.findById(id);
+    const dept = await this.prisma.dept.findUnique({ where: { id } });
     if (!dept) {
       throw new NotFoundException('部门不存在');
     }
 
     // 计算新的父级ID
-    const currentPid = dept.pid ? dept.pid.toString() : null;
+    const currentPid = dept.pid;
     const nextPid = dto.pid === undefined ? currentPid : (dto.pid ?? null);
 
     // 校验父级
@@ -100,18 +100,17 @@ export class DeptService {
     const newName = dto.name ?? dept.name;
     await this.ensureNameUnique(newName, nextPid, id);
 
-    // 构建更新数据
-    const updateData: Partial<Dept> = {};
-    if (dto.name !== undefined) updateData.name = dto.name;
-    if (dto.status !== undefined) updateData.status = dto.status;
-    if (dto.remark !== undefined) updateData.remark = dto.remark;
-    if (dto.pid !== undefined) updateData.pid = dto.pid as any;
+    const updated = await this.prisma.dept.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        status: dto.status,
+        remark: dto.remark,
+        pid: dto.pid !== undefined ? (dto.pid ?? null) : undefined,
+      },
+    });
 
-    const updated = await this.deptModel
-      .findByIdAndUpdate(id, updateData, { new: true })
-      .lean();
-
-    return this.toTreeNode(updated as any);
+    return this.toTreeNode(updated);
   }
 
   /**
@@ -119,12 +118,15 @@ export class DeptService {
    * 若存在子部门则阻止删除
    */
   async remove(id: string): Promise<{ id: string }> {
-    const hasChildren = await this.deptModel.countDocuments({ pid: id });
+    const hasChildren = await this.prisma.dept.count({ where: { pid: id } });
     if (hasChildren > 0) {
       throw new BadRequestException('存在子部门，无法删除');
     }
 
-    const deleted = await this.deptModel.findByIdAndDelete(id);
+    const deleted = await this.prisma.dept
+      .delete({ where: { id } })
+      .catch(() => null);
+
     if (!deleted) {
       throw new NotFoundException('部门不存在');
     }
@@ -138,7 +140,11 @@ export class DeptService {
   private async ensureParentValid(pid: string | null): Promise<void> {
     if (!pid) return;
 
-    const parent = await this.deptModel.findById(pid).select('_id');
+    const parent = await this.prisma.dept.findUnique({
+      where: { id: pid },
+      select: { id: true },
+    });
+
     if (!parent) {
       throw new NotFoundException('父级部门不存在');
     }
@@ -152,15 +158,17 @@ export class DeptService {
     pid: string | null,
     excludeId?: string,
   ): Promise<void> {
-    const filter: FilterQuery<DeptDocument> = {
+    const where: any = {
       name,
       pid: pid ?? null,
     };
+
     if (excludeId) {
-      filter._id = { $ne: excludeId } as any;
+      where.NOT = { id: excludeId };
     }
 
-    const exists = await this.deptModel.findOne(filter).lean();
+    const exists = await this.prisma.dept.findFirst({ where });
+
     if (exists) {
       throw new ConflictException('同级部门名称已存在');
     }
@@ -179,14 +187,15 @@ export class DeptService {
       if (current === targetId) {
         return true;
       }
-      const parent = await this.deptModel
-        .findById(current)
-        .select('pid')
-        .lean();
+      const parent = await this.prisma.dept.findUnique({
+        where: { id: current },
+        select: { pid: true },
+      });
+
       if (!parent || !parent.pid) {
         break;
       }
-      current = parent.pid.toString();
+      current = parent.pid;
     }
 
     return false;
@@ -237,18 +246,17 @@ export class DeptService {
   }
 
   /**
-   * 将数据库文档转换为前端树节点格式
+   * 将数据库记录转换为前端树节点格式
    */
-  private toTreeNode(doc: any): DeptTreeNode {
-    const obj = doc.toObject ? doc.toObject() : doc;
+  private toTreeNode(dept: any): DeptTreeNode {
     return {
-      id: obj._id.toString(),
-      pid: obj.pid ? obj.pid.toString() : null,
-      name: obj.name,
-      status: obj.status ?? 0,
-      remark: obj.remark,
-      createTime: obj.createdAt
-        ? new Date(obj.createdAt).toISOString()
+      id: dept.id,
+      pid: dept.pid || null,
+      name: dept.name,
+      status: dept.status ?? 0,
+      remark: dept.remark || undefined,
+      createTime: dept.createdAt
+        ? new Date(dept.createdAt).toISOString()
         : undefined,
     };
   }

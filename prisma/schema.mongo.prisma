@@ -1,0 +1,215 @@
+// Prisma Schema for MongoDB
+// 使用方式: pnpm prisma:mongo
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 枚举类型 ====================
+
+/// 菜单类型
+enum MenuType {
+  CATALOG  // 目录
+  MENU     // 菜单
+  BUTTON   // 按钮
+  EMBEDDED // 内嵌页面
+  LINK     // 外链
+}
+
+/// 徽标类型
+enum BadgeType {
+  DOT    // 圆点
+  NORMAL // 普通
+}
+
+/// 徽标颜色
+enum BadgeVariants {
+  DEFAULT
+  DESTRUCTIVE
+  PRIMARY
+  SUCCESS
+  WARNING
+}
+
+// ==================== 用户模块 ====================
+
+/// 用户表
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  username  String   @unique
+  password  String
+  nickName  String
+  email     String?  @unique
+  phone     String?  @unique
+  avatar    String?
+  status    Int      @default(0) // 0-启用，1-停用
+  deptId    String?  @db.ObjectId
+  remark    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  dept  Dept?      @relation(fields: [deptId], references: [id], onDelete: SetNull)
+  roles UserRole[]
+
+  @@index([deptId])
+  @@index([status])
+  @@map("users")
+}
+
+/// 角色表
+model Role {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  remark    String   @default("")
+  status    Int      @default(0) // 0-启用，1-停用
+  isBuiltin Boolean  @default(false) // 是否内置角色
+  isSuper   Boolean  @default(false) // 是否超级管理员（拥有所有权限）
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  users UserRole[]
+  menus RoleMenu[]
+
+  @@index([status])
+  @@map("roles")
+}
+
+/// 用户-角色关联表
+model UserRole {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  roleId     String   @db.ObjectId
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// ==================== 部门模块 ====================
+
+/// 部门表（树形结构）
+model Dept {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  pid       String?  @db.ObjectId // 父级部门ID
+  status    Int      @default(0) // 0-启用，1-停用
+  remark    String?
+  treePath  String?  @default("") // 物化路径
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 自关联
+  parent   Dept?  @relation("DeptTree", fields: [pid], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Dept[] @relation("DeptTree")
+
+  // 关联用户
+  users User[]
+
+  @@index([pid])
+  @@index([status])
+  @@index([pid, name]) // MongoDB 不支持 @@unique 组合，用索引替代
+  @@map("depts")
+}
+
+// ==================== 菜单模块 ====================
+
+/// 菜单表（树形结构）
+model Menu {
+  id                 String        @id @default(auto()) @map("_id") @db.ObjectId
+  name               String        @unique // 路由名称
+  title              String // 显示标题
+  parentId           String?       @db.ObjectId // 父级菜单ID
+  path               String // 路由路径
+  component          String? // 组件路径
+  type               MenuType // 菜单类型
+  authCode           String? // 权限标识
+  order              Int           @default(0) // 排序
+  status             Int           @default(0) // 0-启用，1-停用
+  icon               String?
+  activeIcon         String?
+  keepAlive          Boolean       @default(false)
+  affixTab           Boolean       @default(false)
+  hideInMenu         Boolean       @default(false)
+  hideChildrenInMenu Boolean       @default(false)
+  hideInBreadcrumb   Boolean       @default(false)
+  hideInTab          Boolean       @default(false)
+  iframeSrc          String? // iframe地址
+  link               String? // 外链地址
+  activePath         String? // 激活路径
+  badge              String? // 徽标内容
+  badgeType          BadgeType?
+  badgeVariants      BadgeVariants?
+  treePath           String?       @default("") // 物化路径
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  // 自关联
+  parent   Menu?  @relation("MenuTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Menu[] @relation("MenuTree")
+
+  // 角色关联
+  roles RoleMenu[]
+
+  @@index([parentId])
+  @@index([status])
+  @@index([order])
+  @@index([authCode])
+  @@map("menus")
+}
+
+/// 角色-菜单关联表
+model RoleMenu {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  roleId    String   @db.ObjectId
+  menuId    String   @db.ObjectId
+  grantedAt DateTime @default(now())
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, menuId])
+  @@index([menuId])
+  @@map("role_menus")
+}
+
+// ==================== 日志模块 ====================
+
+/// 操作日志表
+model OperLog {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  title         String // 模块标题
+  businessType  Int      @default(0) // 业务类型
+  method        String? // 请求方法
+  requestMethod String? // HTTP方法
+  operName      String? // 操作人员
+  deptName      String? // 部门名称
+  operUrl       String? // 请求URL
+  operIp        String? // 请求IP
+  operLocation  String? // 操作地点
+  operParam     String? // 请求参数
+  jsonResult    String? // 返回结果
+  status        Int      @default(0) // 操作状态
+  errorMsg      String? // 错误消息
+  operTime      DateTime @default(now()) // 操作时间
+  costTime      Int      @default(0) // 耗时(ms)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([operTime(sort: Desc)])
+  @@index([title])
+  @@index([operName])
+  @@index([businessType])
+  @@index([status])
+  @@map("oper_logs")
+}

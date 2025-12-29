@@ -11,7 +11,11 @@ export const validationSchema = Joi.object({
   JWT_SECRET: Joi.string().required(),
   JWT_EXPIRES_IN: Joi.string().default('24h'),
 
-  // MongoDB
+  // Database (Prisma)
+  // 支持 PostgreSQL、MySQL、MongoDB
+  DATABASE_URL: Joi.string().allow('').default(''),
+
+  // MongoDB (Legacy - 保留兼容)
   MONGODB_HOST: Joi.string().default('127.0.0.1'),
   MONGODB_PORT: Joi.number().default(27017),
   MONGODB_DB: Joi.string().default('test'),

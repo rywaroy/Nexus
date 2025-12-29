@@ -3,7 +3,6 @@ import {
   IsArray,
   IsEmail,
   IsIn,
-  IsMongoId,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -11,6 +10,7 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
+import { IsId } from '@/common/decorators/is-id.decorator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateUserDto {
@@ -53,7 +53,7 @@ export class CreateUserDto {
   status?: number;
 
   @IsOptional()
-  @IsMongoId({ message: '部门ID格式不正确' })
+  @IsId({ message: '部门ID格式不正确' })
   @ApiPropertyOptional({ description: '部门ID' })
   deptId?: string;
 

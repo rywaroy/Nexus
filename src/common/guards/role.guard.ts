@@ -13,8 +13,9 @@ export function RoleGuard(roles: string[] | string) {
     async canActivate(context: ExecutionContext) {
       const request = context.switchToHttp().getRequest();
       const user = request.user;
+      // 从 Prisma 关联对象中提取角色名称
       const userRoles: string[] = Array.isArray(user?.roles)
-        ? user.roles
+        ? user.roles.map((ur: any) => ur.role?.name).filter(Boolean)
         : [];
 
       // admin 拥有所有权限

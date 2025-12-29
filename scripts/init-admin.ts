@@ -1,14 +1,16 @@
 /**
  * 初始化脚本：创建 admin 用户和 system 菜单
  *
- * 执行方式：
- * npx ts-node -r tsconfig-paths/register scripts/init-admin.ts
+ * 执行方式（需先运行对应数据库的 prisma 脚本）：
+ * 1. PostgreSQL: pnpm prisma:postgres && npx ts-node -r tsconfig-paths/register scripts/init-admin.ts
+ * 2. MySQL: pnpm prisma:mysql && npx ts-node -r tsconfig-paths/register scripts/init-admin.ts
+ * 3. MongoDB: pnpm prisma:mongo && npx ts-node -r tsconfig-paths/register scripts/init-admin.ts
  *
  * 或在 package.json 中添加脚本后执行：
  * npm run init:admin
  */
 
-import * as mongoose from 'mongoose';
+import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -16,80 +18,16 @@ import * as path from 'path';
 // 加载环境变量
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-// 菜单类型枚举
+const prisma = new PrismaClient();
+
+// 菜单类型枚举（Prisma 使用大写）
 enum MenuType {
-  CATALOG = 'catalog',
-  MENU = 'menu',
-  BUTTON = 'button',
+  CATALOG = 'CATALOG',
+  MENU = 'MENU',
+  BUTTON = 'BUTTON',
+  EMBEDDED = 'EMBEDDED',
+  LINK = 'LINK',
 }
-
-// 菜单 Schema
-const MenuSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true, unique: true },
-    title: { type: String, required: true },
-    parentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Menu', default: null },
-    path: { type: String, required: true },
-    component: { type: String },
-    type: { type: String, required: true, enum: Object.values(MenuType) },
-    authCode: { type: String },
-    order: { type: Number, default: 0 },
-    status: { type: Number, default: 0 },
-    icon: { type: String },
-    keepAlive: { type: Boolean, default: false },
-    affixTab: { type: Boolean, default: false },
-    hideInMenu: { type: Boolean, default: false },
-    hideChildrenInMenu: { type: Boolean, default: false },
-    hideInBreadcrumb: { type: Boolean, default: false },
-    hideInTab: { type: Boolean, default: false },
-  },
-  { timestamps: true },
-);
-
-// 用户 Schema
-const UserSchema = new mongoose.Schema(
-  {
-    username: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    nickName: { type: String, required: true },
-    email: { type: String, unique: true, sparse: true },
-    phone: { type: String, unique: true, sparse: true },
-    avatar: { type: String },
-    status: { type: Number, default: 0 },
-    deptId: { type: mongoose.Schema.Types.ObjectId, ref: 'Dept' },
-    remark: { type: String },
-    roles: { type: [String], default: ['user'], required: true },
-  },
-  { timestamps: true },
-);
-
-// 角色 Schema
-const RoleSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true, unique: true },
-    permissions: { type: [String], default: [] },
-    remark: { type: String, default: '' },
-    status: { type: Number, default: 0 },
-  },
-  { timestamps: true },
-);
-
-// 部门 Schema
-const DeptSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    pid: { type: mongoose.Schema.Types.ObjectId, ref: 'Dept', default: null },
-    status: { type: Number, default: 0 },
-    remark: { type: String },
-  },
-  { timestamps: true },
-);
-
-// 创建模型
-const Menu = mongoose.model('Menu', MenuSchema);
-const User = mongoose.model('User', UserSchema);
-const Role = mongoose.model('Role', RoleSchema);
-const Dept = mongoose.model('Dept', DeptSchema);
 
 // 系统菜单数据
 interface MenuData {
@@ -166,12 +104,20 @@ const SYSTEM_MENUS: MenuData[] = [
             order: 1,
           },
           {
+            name: 'SystemMenuQuery',
+            title: 'system.menu.query',
+            path: '#',
+            type: MenuType.BUTTON,
+            authCode: 'system:menu:query',
+            order: 2,
+          },
+          {
             name: 'SystemMenuCreate',
             title: 'system.menu.create',
             path: '#',
             type: MenuType.BUTTON,
             authCode: 'system:menu:create',
-            order: 2,
+            order: 3,
           },
           {
             name: 'SystemMenuUpdate',
@@ -179,7 +125,7 @@ const SYSTEM_MENUS: MenuData[] = [
             path: '#',
             type: MenuType.BUTTON,
             authCode: 'system:menu:update',
-            order: 3,
+            order: 4,
           },
           {
             name: 'SystemMenuDelete',
@@ -187,7 +133,7 @@ const SYSTEM_MENUS: MenuData[] = [
             path: '#',
             type: MenuType.BUTTON,
             authCode: 'system:menu:delete',
-            order: 4,
+            order: 5,
           },
         ],
       },
@@ -389,45 +335,49 @@ const MONITOR_MENUS: MenuData[] = [];
 // 递归创建菜单
 async function createMenus(
   menus: MenuData[],
-  parentId: mongoose.Types.ObjectId | null = null,
-): Promise<mongoose.Types.ObjectId[]> {
-  const createdIds: mongoose.Types.ObjectId[] = [];
+  parentId: string | null = null,
+): Promise<string[]> {
+  const createdIds: string[] = [];
 
   for (const menuData of menus) {
     // 检查菜单是否已存在
-    const existing = await Menu.findOne({ name: menuData.name });
+    const existing = await prisma.menu.findUnique({
+      where: { name: menuData.name },
+    });
     if (existing) {
       console.log(`  [跳过] 菜单已存在: ${menuData.name}`);
-      createdIds.push(existing._id as mongoose.Types.ObjectId);
+      createdIds.push(existing.id);
 
       // 如果有子菜单，继续创建
       if (menuData.children?.length) {
-        await createMenus(menuData.children, existing._id as mongoose.Types.ObjectId);
+        await createMenus(menuData.children, existing.id);
       }
       continue;
     }
 
     // 创建菜单
-    const menu = await Menu.create({
-      name: menuData.name,
-      title: menuData.title,
-      path: menuData.path,
-      component: menuData.component,
-      type: menuData.type,
-      authCode: menuData.authCode,
-      order: menuData.order ?? 0,
-      icon: menuData.icon,
-      affixTab: menuData.affixTab ?? false,
-      parentId,
-      status: 0,
+    const menu = await prisma.menu.create({
+      data: {
+        name: menuData.name,
+        title: menuData.title,
+        path: menuData.path,
+        component: menuData.component,
+        type: menuData.type as any,
+        authCode: menuData.authCode,
+        order: menuData.order ?? 0,
+        icon: menuData.icon,
+        affixTab: menuData.affixTab ?? false,
+        parentId,
+        status: 0,
+      },
     });
 
     console.log(`  [创建] 菜单: ${menuData.name} (${menuData.type})`);
-    createdIds.push(menu._id as mongoose.Types.ObjectId);
+    createdIds.push(menu.id);
 
     // 递归创建子菜单
     if (menuData.children?.length) {
-      await createMenus(menuData.children, menu._id as mongoose.Types.ObjectId);
+      await createMenus(menuData.children, menu.id);
     }
   }
 
@@ -436,58 +386,57 @@ async function createMenus(
 
 // 获取所有菜单 ID（用于给 admin 角色分配权限）
 async function getAllMenuIds(): Promise<string[]> {
-  const menus = await Menu.find({}, '_id').lean();
-  return menus.map((m) => (m._id as mongoose.Types.ObjectId).toString());
+  const menus = await prisma.menu.findMany({
+    select: { id: true },
+  });
+  return menus.map((m) => m.id);
 }
 
 // 主函数
 async function main() {
   console.log('\n========================================');
-  console.log('       Nexus 初始化脚本');
+  console.log('       Nexus 初始化脚本 (Prisma)');
   console.log('========================================\n');
 
-  // 构建 MongoDB 连接字符串
-  const host = process.env.MONGODB_HOST || '127.0.0.1';
-  const port = process.env.MONGODB_PORT || '27017';
-  const db = process.env.MONGODB_DB || 'test';
-  const user = process.env.MONGODB_USER;
-  const pass = process.env.MONGODB_PASS;
-
-  let uri: string;
-  if (user && pass) {
-    uri = `mongodb://${user}:${pass}@${host}:${port}/${db}?authSource=admin`;
-  } else {
-    uri = `mongodb://${host}:${port}/${db}`;
-  }
-
-  console.log(`[数据库] 连接到: mongodb://${host}:${port}/${db}`);
+  console.log(`[数据库] 使用 Prisma 连接...`);
+  console.log(`[提示] 确保已运行正确的 prisma 脚本（如 pnpm prisma:postgres）`);
 
   try {
-    await mongoose.connect(uri);
+    await prisma.$connect();
     console.log('[数据库] 连接成功\n');
 
     // 1. 创建内置角色（如果不存在）
     console.log('[角色] 检查内置角色...');
-    const adminRole = await Role.findOne({ name: 'admin' });
+    const adminRole = await prisma.role.findUnique({ where: { name: 'admin' } });
+    let adminRoleId: string;
+
     if (!adminRole) {
-      await Role.create({
-        name: 'admin',
-        permissions: ['*'],
-        remark: '系统内置管理员角色',
-        status: 0,
+      const created = await prisma.role.create({
+        data: {
+          name: 'admin',
+          remark: '系统内置管理员角色',
+          status: 0,
+          isBuiltin: true,
+          isSuper: true, // 超级管理员拥有所有权限
+        },
       });
+      adminRoleId = created.id;
       console.log('  [创建] admin 角色');
     } else {
+      adminRoleId = adminRole.id;
       console.log('  [跳过] admin 角色已存在');
     }
 
-    const userRole = await Role.findOne({ name: 'user' });
+    const userRole = await prisma.role.findUnique({ where: { name: 'user' } });
     if (!userRole) {
-      await Role.create({
-        name: 'user',
-        permissions: [],
-        remark: '默认用户角色',
-        status: 0,
+      await prisma.role.create({
+        data: {
+          name: 'user',
+          remark: '默认用户角色',
+          status: 0,
+          isBuiltin: true,
+          isSuper: false,
+        },
       });
       console.log('  [创建] user 角色');
     } else {
@@ -496,13 +445,17 @@ async function main() {
 
     // 2. 创建默认部门
     console.log('\n[部门] 创建默认部门...');
-    let defaultDept = await Dept.findOne({ name: '总公司', pid: null });
+    let defaultDept = await prisma.dept.findFirst({
+      where: { name: '总公司', pid: null },
+    });
     if (!defaultDept) {
-      defaultDept = await Dept.create({
-        name: '总公司',
-        pid: null,
-        status: 0,
-        remark: '系统默认一级部门',
+      defaultDept = await prisma.dept.create({
+        data: {
+          name: '总公司',
+          pid: null,
+          status: 0,
+          remark: '系统默认一级部门',
+        },
       });
       console.log('  [创建] 总公司（一级部门）');
     } else {
@@ -523,30 +476,43 @@ async function main() {
       await createMenus(MONITOR_MENUS);
     }
 
-    // 6. 更新角色权限
+    // 6. 更新角色权限（通过 RoleMenu 关联表）
     console.log('\n[角色] 更新角色权限...');
     const allMenuIds = await getAllMenuIds();
 
-    // admin 角色：所有权限
-    await Role.updateOne(
-      { name: 'admin' },
-      { permissions: ['*', ...allMenuIds] },
-    );
+    // admin 角色：虽然 isSuper=true 拥有所有权限，但也创建 RoleMenu 关联
+    // 先删除旧的关联
+    await prisma.roleMenu.deleteMany({
+      where: { roleId: adminRoleId },
+    });
+
+    // 创建新的关联
+    await prisma.roleMenu.createMany({
+      data: allMenuIds.map((menuId) => ({
+        roleId: adminRoleId,
+        menuId,
+      })),
+      skipDuplicates: true,
+    });
     console.log(`  [更新] admin 角色权限（${allMenuIds.length} 个菜单）`);
 
     // user 角色：无后台权限（C端用户）
-    // 保持 permissions 为空数组
+    // 保持 RoleMenu 为空
 
-    // 6. 创建 admin 用户
+    // 7. 创建 admin 用户
     console.log('\n[用户] 创建管理员用户...');
-    const existingAdmin = await User.findOne({ username: 'admin' });
+    const existingAdmin = await prisma.user.findUnique({
+      where: { username: 'admin' },
+      include: { roles: true },
+    });
+
     if (existingAdmin) {
       // 如果 admin 用户存在但没有部门，则更新部门
       if (!existingAdmin.deptId && defaultDept) {
-        await User.updateOne(
-          { username: 'admin' },
-          { deptId: defaultDept._id },
-        );
+        await prisma.user.update({
+          where: { username: 'admin' },
+          data: { deptId: defaultDept.id },
+        });
         console.log('  [更新] admin 用户已关联到总公司部门');
       } else {
         console.log('  [跳过] admin 用户已存在');
@@ -555,14 +521,18 @@ async function main() {
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash('admin123', salt);
 
-      await User.create({
-        username: 'admin',
-        password: hashedPassword,
-        nickName: '超级管理员',
-        roles: ['admin'],
-        status: 0,
-        deptId: defaultDept._id,
-        remark: '系统内置管理员账户',
+      await prisma.user.create({
+        data: {
+          username: 'admin',
+          password: hashedPassword,
+          nickName: '超级管理员',
+          status: 0,
+          deptId: defaultDept.id,
+          remark: '系统内置管理员账户',
+          roles: {
+            create: [{ roleId: adminRoleId }],
+          },
+        },
       });
       console.log('  [创建] admin 用户');
       console.log('  [信息] 用户名: admin');
@@ -576,10 +546,10 @@ async function main() {
     console.log('========================================\n');
 
     // 统计信息
-    const menuCount = await Menu.countDocuments();
-    const userCount = await User.countDocuments();
-    const roleCount = await Role.countDocuments();
-    const deptCount = await Dept.countDocuments();
+    const menuCount = await prisma.menu.count();
+    const userCount = await prisma.user.count();
+    const roleCount = await prisma.role.count();
+    const deptCount = await prisma.dept.count();
 
     console.log('[统计]');
     console.log(`  菜单总数: ${menuCount}`);
@@ -591,7 +561,7 @@ async function main() {
     console.error('\n[错误] 初始化失败:', error);
     process.exit(1);
   } finally {
-    await mongoose.disconnect();
+    await prisma.$disconnect();
     console.log('[数据库] 连接已关闭\n');
   }
 }

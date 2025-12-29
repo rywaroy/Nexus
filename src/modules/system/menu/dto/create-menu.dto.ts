@@ -2,7 +2,6 @@ import {
   IsBoolean,
   IsEnum,
   IsIn,
-  IsMongoId,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -10,6 +9,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { IsId } from '@/common/decorators/is-id.decorator';
 import { Type } from 'class-transformer';
 import { BadgeType, BadgeVariants, MenuType } from '../entities/menu.entity';
 
@@ -29,7 +29,7 @@ export class CreateMenuDto {
 
   /** 父级菜单ID */
   @IsOptional()
-  @IsMongoId({ message: '父级菜单ID格式不正确' })
+  @IsId({ message: '父级菜单ID格式不正确' })
   parentId?: string;
 
   /** 路由路径 */

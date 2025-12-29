@@ -1,29 +1,40 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { OperLog, OperLogDocument } from './entities/oper-log.entity';
+import { PrismaService } from '@/common/modules/prisma';
 import { CreateOperLogDto, QueryOperLogDto } from './dto/oper-log.dto';
 
 @Injectable()
 export class OperLogService {
-  constructor(
-    @InjectModel(OperLog.name)
-    private readonly operLogModel: Model<OperLogDocument>,
-  ) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * 创建操作日志
    */
-  async create(createOperLogDto: CreateOperLogDto): Promise<OperLog> {
-    const operLog = new this.operLogModel(createOperLogDto);
-    return operLog.save();
+  async create(dto: CreateOperLogDto) {
+    return this.prisma.operLog.create({
+      data: {
+        title: dto.title,
+        businessType: dto.businessType ?? 0,
+        method: dto.method,
+        requestMethod: dto.requestMethod,
+        operName: dto.operName,
+        deptName: dto.deptName,
+        operUrl: dto.operUrl,
+        operIp: dto.operIp,
+        operLocation: dto.operLocation,
+        operParam: dto.operParam,
+        jsonResult: dto.jsonResult,
+        status: dto.status ?? 0,
+        errorMsg: dto.errorMsg,
+        costTime: dto.costTime ?? 0,
+      },
+    });
   }
 
   /**
    * 分页查询操作日志列表
    */
-  async findAll(queryOperLogDto: QueryOperLogDto): Promise<{
-    list: OperLog[];
+  async findAll(query: QueryOperLogDto): Promise<{
+    list: any[];
     total: number;
   }> {
     const {
@@ -35,54 +46,52 @@ export class OperLogService {
       endTime,
       page = 1,
       pageSize = 10,
-    } = queryOperLogDto;
+    } = query;
 
     // 构建查询条件
-    const query: any = {};
+    const where: any = {};
 
     if (title) {
-      query.title = { $regex: title, $options: 'i' };
+      where.title = { contains: title };
     }
 
     if (operName) {
-      query.operName = { $regex: operName, $options: 'i' };
+      where.operName = { contains: operName };
     }
 
     if (businessType !== undefined && businessType !== null) {
-      query.businessType = businessType;
+      where.businessType = businessType;
     }
 
     if (status !== undefined && status !== null) {
-      query.status = status;
+      where.status = status;
     }
 
     if (beginTime || endTime) {
-      query.operTime = {};
+      where.operTime = {};
       if (beginTime) {
-        query.operTime.$gte = new Date(beginTime);
+        where.operTime.gte = new Date(beginTime);
       }
       if (endTime) {
         // 结束时间加一天，包含当天
         const end = new Date(endTime);
         end.setDate(end.getDate() + 1);
-        query.operTime.$lt = end;
+        where.operTime.lt = end;
       }
     }
 
     // 计算分页参数
     const skip = (page - 1) * pageSize;
-    const limit = pageSize;
 
     // 并行执行查询和计数
     const [list, total] = await Promise.all([
-      this.operLogModel
-        .find(query)
-        .sort({ operTime: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean()
-        .exec(),
-      this.operLogModel.countDocuments(query).exec(),
+      this.prisma.operLog.findMany({
+        where,
+        orderBy: { operTime: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.operLog.count({ where }),
     ]);
 
     return { list, total };
@@ -91,36 +100,30 @@ export class OperLogService {
   /**
    * 根据ID查询操作日志详情
    */
-  async findOne(id: string): Promise<OperLog | null> {
-    if (!Types.ObjectId.isValid(id)) {
-      return null;
-    }
-    return this.operLogModel.findById(id).lean().exec();
+  async findOne(id: string) {
+    return this.prisma.operLog.findUnique({ where: { id } });
   }
 
   /**
    * 批量删除操作日志
    */
   async remove(ids: string[]): Promise<{ deletedCount: number }> {
-    const validIds = ids.filter((id) => Types.ObjectId.isValid(id));
-    if (validIds.length === 0) {
+    if (!Array.isArray(ids) || ids.length === 0) {
       return { deletedCount: 0 };
     }
 
-    const result = await this.operLogModel
-      .deleteMany({
-        _id: { $in: validIds.map((id) => new Types.ObjectId(id)) },
-      })
-      .exec();
+    const result = await this.prisma.operLog.deleteMany({
+      where: { id: { in: ids } },
+    });
 
-    return { deletedCount: result.deletedCount || 0 };
+    return { deletedCount: result.count };
   }
 
   /**
    * 清空所有操作日志
    */
   async clean(): Promise<{ deletedCount: number }> {
-    const result = await this.operLogModel.deleteMany({}).exec();
-    return { deletedCount: result.deletedCount || 0 };
+    const result = await this.prisma.operLog.deleteMany({});
+    return { deletedCount: result.count };
   }
 }

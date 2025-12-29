@@ -6,11 +6,8 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { PrismaService } from '@/common/modules/prisma';
 import { PERMISSION_KEY } from '../decorator/permission.decorator';
-import { Menu, MenuDocument } from '@/modules/system/menu/entities/menu.entity';
-import { Role, RoleDocument } from '@/modules/system/role/entities/role.entity';
 
 /**
  * 权限守卫
@@ -20,22 +17,17 @@ import { Role, RoleDocument } from '@/modules/system/role/entities/role.entity';
  *
  * 权限检查逻辑：
  * 1. 如果接口未声明 @RequirePermission，直接放行
- * 2. admin 角色拥有所有权限，直接放行
- * 3. 获取用户所有角色的 permissions（菜单ID数组）
+ * 2. admin 角色或 isSuper 角色拥有所有权限，直接放行
+ * 3. 获取用户所有角色的 RoleMenu 关联（菜单ID数组）
  * 4. 查询这些菜单的 authCode（仅查询启用状态的菜单）
  * 5. 检查是否包含接口要求的权限码
- *
- * 注意：'*' 通配符仅 admin 角色可用，其他角色的 '*' 会被忽略
  */
 @Injectable()
 export class PermissionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    @InjectModel(Menu.name)
-    private readonly menuModel: Model<MenuDocument>,
-    @InjectModel(Role.name)
-    private readonly roleModel: Model<RoleDocument>,
-  ) { }
+    private readonly prisma: PrismaService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // 获取接口声明的权限码
@@ -58,10 +50,13 @@ export class PermissionGuard implements CanActivate {
       throw new UnauthorizedException('请先登录');
     }
 
-    const userRoles: string[] = Array.isArray(user.roles) ? user.roles : [];
+    // 从 Prisma 关联对象中提取角色名称
+    // user.roles 结构: [{ roleId, role: { name: 'admin' } }, ...]
+    const userRoles: string[] = Array.isArray(user.roles)
+      ? user.roles.map((ur: any) => ur.role?.name).filter(Boolean)
+      : [];
 
     // 获取用户所有启用的角色
-    // 兼容：user.roles 既可能存"角色名称"，也可能存"角色ID（ObjectId 字符串）"
     const normalizedRoleKeys = userRoles
       .filter((v) => typeof v === 'string')
       .map((v) => v.trim())
@@ -72,59 +67,50 @@ export class PermissionGuard implements CanActivate {
       return true;
     }
 
-    const roleIds = Array.from(
-      new Set(
-        normalizedRoleKeys.filter((v) => Types.ObjectId.isValid(v)),
-      ),
-    ).map((id) => new Types.ObjectId(id));
+    if (normalizedRoleKeys.length === 0) {
+      throw new ForbiddenException('您没有权限访问此资源');
+    }
 
-    const roles = await this.roleModel
-      .find(
-        roleIds.length > 0
-          ? {
-            status: 0,
-            $or: [
-              { name: { $in: normalizedRoleKeys } },
-              { _id: { $in: roleIds } },
-            ],
-          }
-          : { status: 0, name: { $in: normalizedRoleKeys } },
-      )
-      .lean();
+    // 查询用户拥有的启用状态角色（支持角色名或角色ID）
+    const roles = await this.prisma.role.findMany({
+      where: {
+        status: 0,
+        OR: [
+          { name: { in: normalizedRoleKeys } },
+          { id: { in: normalizedRoleKeys } },
+        ],
+      },
+      include: {
+        menus: true,
+      },
+    });
 
-    // admin 角色拥有所有权限（兼容通过角色ID命中 admin 的情况）
-    if (roles.some((role) => role.name === 'admin')) {
+    // 检查是否有超级管理员角色
+    if (roles.some((role) => role.isSuper || role.name === 'admin')) {
       return true;
     }
 
-    // 收集所有角色的菜单 ID，过滤掉无效的 ObjectId
-    const menuIds: Types.ObjectId[] = [];
+    // 收集所有角色的菜单 ID
+    const menuIds = new Set<string>();
     for (const role of roles) {
-      for (const menuId of role.permissions ?? []) {
-        // 忽略 '*' 通配符，仅 admin 角色可使用全部权限
-        if (menuId === '*') {
-          continue;
-        }
-        // 验证是否为有效的 ObjectId
-        if (Types.ObjectId.isValid(menuId)) {
-          menuIds.push(new Types.ObjectId(menuId));
-        }
+      for (const rm of role.menus ?? []) {
+        menuIds.add(rm.menuId);
       }
     }
 
     // 没有任何菜单权限
-    if (menuIds.length === 0) {
+    if (menuIds.size === 0) {
       throw new ForbiddenException('您没有权限访问此资源');
     }
 
     // 查询启用状态菜单的 authCode
-    const menus = await this.menuModel
-      .find({
-        _id: { $in: menuIds },
+    const menus = await this.prisma.menu.findMany({
+      where: {
+        id: { in: Array.from(menuIds) },
         status: 0, // 仅查询启用状态的菜单
-      })
-      .select('authCode')
-      .lean();
+      },
+      select: { authCode: true },
+    });
 
     const ownedAuthCodes = new Set<string>();
     for (const menu of menus) {

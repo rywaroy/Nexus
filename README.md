@@ -5,8 +5,9 @@
 Nexus 是一个基于 NestJS 框架构建的后端应用程序。它提供了一套完整的功能，包括：
 
   * **用户认证与授权:** 基于 JWT (JSON Web Token) 的用户认证机制，以及基于角色的访问控制 (RBAC)。
-  * **数据库集成:** 使用 Mongoose 与 MongoDB 进行数据交互，并集成了 Redis 用于缓存。
-  * **文件上传:** 支持单个和多个文件上传，并包含文件大小验证。
+  * **多数据库支持:** 使用 Prisma ORM 支持 MySQL、PostgreSQL 和 MongoDB，可根据部署环境灵活选择。
+  * **缓存系统:** 集成 Redis 用于缓存。
+  * **文件上传:** 支持单个和多个文件上传，并包含文件大小验证。支持本地存储和阿里云 OSS。
   * **配置管理:** 采用现代化的配置系统，通过环境变量进行灵活配置，并使用 Joi 进行验证。
   * **日志系统:** 使用 Winston 进行日志记录，包括控制台输出和每日轮换的日志文件。
   * **API 文档:** 集成 Swagger (OpenAPI) 自动生成和展示 API 文档。
@@ -17,7 +18,8 @@ Nexus 是一个基于 NestJS 框架构建的后端应用程序。它提供了一
 
   * **框架:** NestJS (`@nestjs/core`)
   * **语言:** TypeScript
-  * **数据库:** MongoDB (使用 `mongoose` 连接), Redis (使用 `ioredis` 连接)
+  * **ORM:** Prisma (支持 MySQL、PostgreSQL、MongoDB)
+  * **缓存:** Redis (使用 `ioredis` 连接)
   * **认证:** JWT (`@nestjs/jwt`, `passport`, `passport-jwt`)
   * **配置:** `@nestjs/config`, `joi`
   * **API 文档:** `@nestjs/swagger`
@@ -29,6 +31,11 @@ Nexus 是一个基于 NestJS 框架构建的后端应用程序。它提供了一
 ```
 /
 ├── .vscode/               # VSCode 编辑器配置
+├── prisma/                # Prisma 配置目录
+│   ├── schema.prisma      # 当前使用的 Prisma Schema（由脚本复制生成）
+│   ├── schema.postgres.prisma  # PostgreSQL Schema
+│   ├── schema.mysql.prisma     # MySQL Schema
+│   └── schema.mongo.prisma     # MongoDB Schema
 ├── config/                # 配置文件
 │   ├── configuration.ts   # 配置工厂函数
 │   └── validation.ts      # 环境变量验证
@@ -36,6 +43,8 @@ Nexus 是一个基于 NestJS 框架构建的后端应用程序。它提供了一
 ├── logs/                  # 日志文件
 ├── node_modules/          # 依赖包
 ├── public/                # 静态资源
+├── scripts/               # 脚本文件
+│   └── init-admin.ts      # 初始化管理员脚本
 ├── src/                   # 源代码
 │   ├── app.controller.ts  # 主应用控制器
 │   ├── app.module.ts      # 主应用模块
@@ -46,6 +55,8 @@ Nexus 是一个基于 NestJS 框架构建的后端应用程序。它提供了一
 │   │   ├── filters/       # 过滤器
 │   │   ├── guards/        # 守卫
 │   │   ├── interceptor/   # 拦截器
+│   │   ├── modules/       # 公共基础设施模块
+│   │   │   └── prisma/    # Prisma 数据库服务
 │   │   ├── pipes/         # 管道
 │   │   └── logger.ts      # 日志配置
 │   ├── config/            # 配置模块
@@ -125,12 +136,17 @@ import { AuthGuard } from '@/common/guards/auth.guard';
       * 这是一个自定义的守卫，用于实现基于角色的访问控制。
       * 它会检查当前用户的角色是否包含在允许访问的角色列表中。
 
-##### **4.4. 数据库 (`src/modules/system/user`, `src/modules/common/redis`)**
+##### **4.4. 数据库 (`src/common/modules/prisma`)**
 
-  * **MongoDB:**
-      * **连接:** 在 `AppModule` 中，使用 `MongooseModule.forRootAsync` 异步地配置 MongoDB 连接。连接参数（如主机、端口、数据库名、用户名、密码）都是通过 `ConfigService` 从环境变量中动态获取的。
-      * **Schema 和 Model:** `src/modules/system/user/entities/user.entity.ts` 文件中定义了 `User` 的 Mongoose Schema 和模型。
-      * **数据操作:** `UserService` 通过 `@InjectModel(User.name)` 注入 `UserModel`，并使用它来进行数据库的增删改查操作。
+  * **Prisma ORM:**
+      * **多数据库支持:** 项目使用 Prisma ORM，支持 MySQL、PostgreSQL 和 MongoDB 三种数据库。
+      * **Schema 文件:** 不同数据库使用不同的 Schema 文件：
+        - `prisma/schema.postgres.prisma` - PostgreSQL
+        - `prisma/schema.mysql.prisma` - MySQL
+        - `prisma/schema.mongo.prisma` - MongoDB
+      * **连接:** 通过 `DATABASE_URL` 环境变量配置数据库连接。
+      * **PrismaService:** 全局的 `PrismaService` 封装了 `PrismaClient`，提供数据库连接管理。
+      * **数据操作:** 各业务 Service 通过注入 `PrismaService` 来进行数据库的增删改查操作。
   * **Redis:**
       * **连接:** `RedisService` 在构造函数中初始化一个 `ioredis` 实例，连接信息同样来自于 `ConfigService`。
       * **服务:** `RedisModule` 提供了 `RedisService`，它封装了一些常用的 Redis 操作，如 `set`, `get`, 和 `del`，并被注册为全局模块，可以在任何地方注入使用。
@@ -141,7 +157,7 @@ import { AuthGuard } from '@/common/guards/auth.guard';
   * **拦截器:**
       * `FileInterceptor` 用于处理单个文件上传。
       * `FilesInterceptor` 用于处理多个文件上传。
-  * **文件存储:** 上传的文件默认存储在 `uploads` 目录下。
+  * **文件存储:** 支持本地存储（uploads 目录）和阿里云 OSS 存储。
   * **验证:** `FileValidationPipe` 是一个自定义的管道，用于验证上传文件的大小。
 
 ### **5. 如何运行项目**
@@ -149,25 +165,67 @@ import { AuthGuard } from '@/common/guards/auth.guard';
 1.  **安装依赖:**
 
     ```bash
-    npm install
+    pnpm install
     ```
 
 2.  **配置环境变量:**
-    复制 `.env.example` 文件为 `.env`，并根据你的本地环境修改配置，例如数据库连接信息。
+    复制 `.env.example` 文件为 `.env`，并根据你的本地环境修改配置。
 
     ```bash
     cp .env.example .env
     ```
 
-3.  **启动开发服务器:**
+    **关键配置项:**
+    ```bash
+    # 数据库连接（选择其一）
+    # PostgreSQL:
+    DATABASE_URL="postgresql://user:password@localhost:5432/nexus?schema=public"
+    # MySQL:
+    DATABASE_URL="mysql://user:password@localhost:3306/nexus"
+    # MongoDB:
+    DATABASE_URL="mongodb://user:password@localhost:27017/nexus?authSource=admin"
+
+    # JWT 配置
+    JWT_SECRET=your-secret-key
+    JWT_EXPIRES_IN=24h
+    ```
+
+3.  **选择并生成 Prisma Client:**
+
+    根据你使用的数据库，运行对应的脚本：
 
     ```bash
-    npm run start:dev
+    # PostgreSQL
+    pnpm prisma:postgres
+
+    # MySQL
+    pnpm prisma:mysql
+
+    # MongoDB
+    pnpm prisma:mongo
+    ```
+
+4.  **同步数据库结构:**
+
+    ```bash
+    npx prisma db push
+    ```
+
+5.  **初始化数据（可选）:**
+
+    ```bash
+    pnpm init:admin
+    ```
+
+6.  **启动开发服务器:**
+
+    ```bash
+    pnpm start:dev
     ```
 
     应用将在 `http://localhost:3000` 上运行。
 
-4.  **API 文档:**
+7.  **API 文档:**
     访问 `http://localhost:3000/api/v1/swagger` 查看 Swagger API 文档。
 
 ### **6. 项目初始化**
@@ -177,7 +235,14 @@ import { AuthGuard } from '@/common/guards/auth.guard';
 #### **运行初始化脚本**
 
 ```bash
-npm run init:admin
+# 确保先运行对应数据库的 Prisma 脚本
+pnpm prisma:mysql  # 或 prisma:postgres / prisma:mongo
+
+# 同步数据库结构
+npx prisma db push
+
+# 初始化数据
+pnpm init:admin
 ```
 
 #### **初始化内容**
@@ -185,10 +250,13 @@ npm run init:admin
 脚本会自动创建以下数据：
 
 **1. 内置角色**
+
 | 角色名 | 权限 | 说明 |
 | :-- | :-- | :-- |
-| `admin` | `['*']` + 所有菜单ID | 超级管理员，拥有所有权限 |
-| `user` | `[]` | 默认用户角色，无后台权限（C端用户） |
+| `admin` | `isSuper: true` | 超级管理员，拥有所有权限 |
+| `user` | 无 | 默认用户角色，无后台权限（C端用户） |
+
+> **注意:** 新版本使用 `isSuper` 标记和 `RoleMenu` 关联表来管理权限，替代了原来的 `permissions: ['*']` 数组。
 
 **2. 默认部门**
 | 部门名称 | 说明 |
@@ -219,19 +287,17 @@ System (系统管理)
 │   ├── system:role:create (新增)
 │   ├── system:role:update (修改)
 │   └── system:role:delete (删除)
-└── User (用户管理)
-    ├── system:user:list (查看列表)
-    ├── system:user:query (查询详情)
-    ├── system:user:create (新增)
-    ├── system:user:update (修改)
-    ├── system:user:delete (删除)
-    └── system:user:reset-password (重置密码)
-
-Monitor (日志监控)
-└── OperLog (操作日志)
-    ├── monitor:operlog:list (查看列表)
-    ├── monitor:operlog:query (查询详情)
-    └── monitor:operlog:delete (删除/清空)
+├── User (用户管理)
+│   ├── system:user:list (查看列表)
+│   ├── system:user:query (查询详情)
+│   ├── system:user:create (新增)
+│   ├── system:user:update (修改)
+│   ├── system:user:delete (删除)
+│   └── system:user:reset-password (重置密码)
+└── Log (操作日志)
+    ├── system:log:list (查看列表)
+    ├── system:log:query (查询详情)
+    └── system:log:delete (删除/清空)
 ```
 
 **4. 管理员账户**
@@ -250,18 +316,19 @@ Monitor (日志监控)
 初始化脚本支持重复执行，已存在的数据会被跳过：
 - 已存在的角色、部门、菜单、用户不会重复创建
 - 如果 admin 用户存在但未关联部门，会自动更新关联
-- 角色权限会被更新为最新的菜单列表
+- 角色权限会通过 RoleMenu 关联表更新为最新的菜单列表
 
 #### **执行示例**
 
 ```bash
-$ npm run init:admin
+$ pnpm init:admin
 
 ========================================
-       Nexus 初始化脚本
+       Nexus 初始化脚本 (Prisma)
 ========================================
 
-[数据库] 连接到: mongodb://127.0.0.1:27017/nexus
+[数据库] 使用 Prisma 连接...
+[提示] 确保已运行正确的 prisma 脚本（如 pnpm prisma:postgres）
 [数据库] 连接成功
 
 [角色] 检查内置角色...
@@ -272,13 +339,13 @@ $ npm run init:admin
   [创建] 总公司（一级部门）
 
 [菜单] 创建 Dashboard 菜单...
-  [创建] 菜单: Dashboard (catalog)
-  [创建] 菜单: Analytics (menu)
-  [创建] 菜单: Workspace (menu)
+  [创建] 菜单: Dashboard (CATALOG)
+  [创建] 菜单: Analytics (MENU)
+  [创建] 菜单: Workspace (MENU)
 
 [菜单] 创建系统菜单...
-  [创建] 菜单: System (catalog)
-  [创建] 菜单: SystemMenu (menu)
+  [创建] 菜单: System (CATALOG)
+  [创建] 菜单: SystemMenu (MENU)
   ...
 
 [角色] 更新角色权限...
@@ -304,11 +371,148 @@ $ npm run init:admin
 [数据库] 连接已关闭
 ```
 
+---
+
+## 数据库配置
+
+### **多数据库支持**
+
+项目使用 Prisma ORM，支持三种数据库：
+
+| 数据库 | Schema 文件 | 脚本命令 |
+| :-- | :-- | :-- |
+| PostgreSQL | `prisma/schema.postgres.prisma` | `pnpm prisma:postgres` |
+| MySQL | `prisma/schema.mysql.prisma` | `pnpm prisma:mysql` |
+| MongoDB | `prisma/schema.mongo.prisma` | `pnpm prisma:mongo` |
+
+### **数据模型**
+
+项目包含以下核心数据模型：
+
+```
+┌─────────────────┐     ┌─────────────────┐
+│      User       │     │      Role       │
+├─────────────────┤     ├─────────────────┤
+│ id (UUID)       │     │ id (UUID)       │
+│ username        │     │ name            │
+│ password        │     │ remark          │
+│ nickName        │     │ status          │
+│ email           │     │ isBuiltin       │
+│ phone           │     │ isSuper         │
+│ avatar          │     └────────┬────────┘
+│ status          │              │
+│ deptId ─────────┼──┐           │
+│ remark          │  │           │
+└────────┬────────┘  │           │
+         │           │           │
+         │           │           │
+    ┌────┴────┐      │      ┌────┴────┐
+    │ UserRole│      │      │RoleMenu │
+    ├─────────┤      │      ├─────────┤
+    │ userId  │      │      │ roleId  │
+    │ roleId  │      │      │ menuId  │
+    └─────────┘      │      └────┬────┘
+                     │           │
+              ┌──────┴───┐  ┌────┴────┐
+              │   Dept   │  │  Menu   │
+              ├──────────┤  ├─────────┤
+              │ id       │  │ id      │
+              │ name     │  │ name    │
+              │ pid      │  │ title   │
+              │ status   │  │ parentId│
+              │ remark   │  │ path    │
+              └──────────┘  │ type    │
+                            │ authCode│
+                            │ ...     │
+                            └─────────┘
+```
+
+**关联表说明:**
+- `UserRole`: 用户-角色多对多关联
+- `RoleMenu`: 角色-菜单多对多关联（权限分配）
+
+### **切换数据库步骤**
+
+1. **修改 `.env` 文件中的 `DATABASE_URL`**
+
+2. **运行对应的 Prisma 脚本**
+   ```bash
+   pnpm prisma:mysql  # 或 prisma:postgres / prisma:mongo
+   ```
+
+3. **同步数据库结构**
+   ```bash
+   npx prisma db push
+   ```
+
+4. **重新初始化数据（如需要）**
+   ```bash
+   pnpm init:admin
+   ```
+
+---
+
+## 自定义验证装饰器
+
+### **@IsId 装饰器**
+
+`@IsId` 是一个通用的 ID 验证装饰器，用于验证 ID 字段格式。它会根据 `DATABASE_TYPE` 环境变量自动选择正确的验证方式：
+
+- **PostgreSQL/MySQL**: 验证 UUID v4 格式（如 `550e8400-e29b-41d4-a716-446655440000`）
+- **MongoDB**: 验证 ObjectId 格式（如 `507f1f77bcf86cd799439011`）
+
+**文件位置**: `src/common/decorators/is-id.decorator.ts`
+
+**使用示例:**
+
+```typescript
+import { IsId } from '@/common/decorators/is-id.decorator';
+import { IsOptional, IsString } from 'class-validator';
+
+export class CreateDeptDto {
+  @IsString()
+  name: string;
+
+  /** 父级部门ID */
+  @IsOptional()
+  @IsId({ message: '父级部门ID格式不正确' })
+  pid?: string;
+}
+```
+
+**环境配置:**
+
+在 `.env` 文件中配置数据库类型：
+
+```bash
+# 使用 PostgreSQL 或 MySQL 时
+DATABASE_TYPE=postgres
+# 或
+DATABASE_TYPE=mysql
+
+# 使用 MongoDB 时
+DATABASE_TYPE=mongodb
+```
+
+**为什么需要这个装饰器？**
+
+由于项目支持多种数据库，不同数据库使用不同的 ID 格式：
+
+| 数据库 | ID 生成方式 | ID 格式 | 示例 |
+| :-- | :-- | :-- | :-- |
+| PostgreSQL | `@default(uuid())` | UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
+| MySQL | `@default(uuid())` | UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
+| MongoDB | `@default(auto()) @db.ObjectId` | ObjectId | `507f1f77bcf86cd799439011` |
+
+使用 `@IsId` 装饰器可以避免在切换数据库时需要修改所有 DTO 文件中的验证装饰器（从 `@IsUUID` 改为 `@IsMongoId` 或反之）。
+
+---
+
 ## config
 
 ### **1. `src/config/configuration.ts`：配置工厂函数**
 
-这个文件导出一个默认函数，它被称为“配置工厂”（Configuration Factory）。它的职责是读取环境变量 (`process.env`) 并将它们组织成一个结构清晰、易于访问的 JavaScript 对象。
+这个文件导出一个默认函数，它被称为"配置工厂"（Configuration Factory）。它的职责是读取环境变量 (`process.env`) 并将它们组织成一个结构清晰、易于访问的 JavaScript 对象。
 
 **代码分析:**
 
@@ -322,12 +526,8 @@ export default () => ({
     secret: process.env.JWT_SECRET || 'yourSecretKey',
     expiresIn: process.env.JWT_EXPIRES_IN || '24h',
   },
-  mongodb: {
-    host: process.env.MONGODB_HOST || '127.0.0.1',
-    port: parseInt(process.env.MONGODB_PORT) || 27017,
-    database: process.env.MONGODB_DB || 'test',
-    user: process.env.MONGODB_USER || '',
-    password: process.env.MONGODB_PASS || '',
+  database: {
+    url: process.env.DATABASE_URL,
   },
   redis: {
     host: process.env.REDIS_HOST || '127.0.0.1',
@@ -340,7 +540,7 @@ export default () => ({
 
 **关键点:**
 
-  * **结构化:** 它将相关的配置项组合在一起，例如所有数据库相关的配置都在 `mongodb` 对象下。这使得配置项在代码中的调用非常直观，例如 `configService.get('mongodb.host')`。
+  * **结构化:** 它将相关的配置项组合在一起，例如所有数据库相关的配置都在 `database` 对象下。这使得配置项在代码中的调用非常直观，例如 `configService.get('database.url')`。
   * **类型转换:** 它负责将从 `.env` 文件中读取到的字符串类型转换为程序实际需要的类型。例如，`APP_PORT` 被 `parseInt()` 转换为数字类型。
   * **默认值:** 为每个配置项提供了默认值（例如 `process.env.APP_PORT || 3000`）。这保证了即使在没有提供 `.env` 文件的情况下，应用也能以一套默认的开发配置启动，非常有利于快速开始和开发调试。
 
@@ -366,18 +566,21 @@ export const validationSchema = Joi.object({
   JWT_SECRET: Joi.string().required(),
   JWT_EXPIRES_IN: Joi.string().default('24h'),
 
-  // MongoDB
-  MONGODB_HOST: Joi.string().default('127.0.0.1'),
-  // ... 其他数据库和Redis配置
+  // Database (Prisma)
+  DATABASE_URL: Joi.string().required(),
+
+  // Redis
+  REDIS_HOST: Joi.string().default('127.0.0.1'),
+  // ... 其他 Redis 配置
 });
 ```
 
 **关键点:**
 
-  * **强制性规则:** 通过 `.required()` 明确指定了哪些环境变量是必需的，比如 `JWT_SECRET`。如果启动时没有在 `.env` 文件或操作系统环境中提供这个变量，应用会立即报错并退出，从而避免了在运行时出现因配置缺失导致的潜在问题。
-  * **类型和格式验证:** Joi 提供了丰富的验证规则。例如，`APP_PORT` 必须是一个数字 (`Joi.number()`)，`NODE_ENV` 必须是 `'development'`, `'production'`, `'test'`, `'online'` 中的一个 (`Joi.string().valid(...)`)。这保证了配置值的正确性。
-  * **默认值:** 和 `configuration.ts` 类似，这里也可以设置默认值，作为一种兜底机制。
-  * **启动时验证:** 这个验证模式会在应用启动时由 `@nestjs/config` 模块自动执行。这是一种“快速失败”（Fail-fast）的策略，能尽早发现配置错误。
+  * **强制性规则:** 通过 `.required()` 明确指定了哪些环境变量是必需的，比如 `JWT_SECRET` 和 `DATABASE_URL`。如果启动时没有提供这些变量，应用会立即报错并退出。
+  * **类型和格式验证:** Joi 提供了丰富的验证规则。例如，`APP_PORT` 必须是一个数字 (`Joi.number()`)，`NODE_ENV` 必须是指定值之一。
+  * **默认值:** 作为一种兜底机制。
+  * **启动时验证:** 这是一种"快速失败"（Fail-fast）的策略，能尽早发现配置错误。
 
 -----
 
@@ -395,6 +598,7 @@ export const validationSchema = Joi.object({
             load: [configuration],
             validationSchema,
         }),
+        PrismaModule,  // 全局 Prisma 模块
         // ... 其他模块
     ],
 })
@@ -402,7 +606,7 @@ export class AppModule {}
 ```
 
 1.  `ConfigModule.forRoot()`: 初始化配置模块。
-2.  `isGlobal: true`: 将 `ConfigModule` 注册为全局模块，这样在其他任何模块中都可以直接注入 `ConfigService`，无需在每个模块中单独导入 `ConfigModule`。
+2.  `isGlobal: true`: 将 `ConfigModule` 注册为全局模块，这样在其他任何模块中都可以直接注入 `ConfigService`。
 3.  `load: [configuration]`: 告诉 `ConfigModule` 使用 `configuration.ts` 中的工厂函数来加载和组织配置。
 4.  `validationSchema`: 将 `validation.ts` 中定义的 Joi 验证模式传递给配置模块，用于在启动时进行验证。
 
@@ -456,7 +660,7 @@ export class HttpExceptionFilter implements ExceptionFilter<HttpException> {
         logger.error(
             `${request?.method} ${request?.url} ${request.user && request.user._id.toString()} ${JSON.stringify(request.query)}  ${JSON.stringify(request.body)} ${JSON.stringify(errorResponse)}`,
         );
-        
+
         // 6. 发送响应
         response.status(200).json(errorResponse);
     }
@@ -709,20 +913,14 @@ import {
     UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { PrismaService } from '@/common/modules/prisma';
 import { PERMISSION_KEY } from '../decorator/permission.decorator';
-import { Menu, MenuDocument } from '@/modules/system/menu/entities/menu.entity';
-import { Role, RoleDocument } from '@/modules/system/role/entities/role.entity';
 
 @Injectable()
 export class PermissionGuard implements CanActivate {
     constructor(
         private readonly reflector: Reflector,
-        @InjectModel(Menu.name)
-        private readonly menuModel: Model<MenuDocument>,
-        @InjectModel(Role.name)
-        private readonly roleModel: Model<RoleDocument>,
+        private readonly prisma: PrismaService,
     ) {}
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -752,34 +950,43 @@ export class PermissionGuard implements CanActivate {
             return true;
         }
 
-        // 5. 获取用户所有启用的角色
-        const roles = await this.roleModel
-            .find({ name: { $in: userRoles }, status: 0 })
-            .lean();
+        // 5. 查询用户拥有的启用状态角色
+        const roles = await this.prisma.role.findMany({
+            where: {
+                status: 0,
+                OR: [
+                    { name: { in: userRoles } },
+                    { id: { in: userRoles } },
+                ],
+            },
+            include: { menus: true },
+        });
 
-        // 6. 收集所有角色的菜单 ID
-        const menuIds: Types.ObjectId[] = [];
+        // 6. 检查是否有超级管理员角色
+        if (roles.some((role) => role.isSuper)) {
+            return true;
+        }
+
+        // 7. 收集所有角色的菜单 ID
+        const menuIds = new Set<string>();
         for (const role of roles) {
-            for (const menuId of role.permissions ?? []) {
-                if (menuId === '*') continue; // 忽略通配符
-                if (Types.ObjectId.isValid(menuId)) {
-                    menuIds.push(new Types.ObjectId(menuId));
-                }
+            for (const rm of role.menus ?? []) {
+                menuIds.add(rm.menuId);
             }
         }
 
-        if (menuIds.length === 0) {
+        if (menuIds.size === 0) {
             throw new ForbiddenException('您没有权限访问此资源');
         }
 
-        // 7. 查询启用状态菜单的 authCode
-        const menus = await this.menuModel
-            .find({
-                _id: { $in: menuIds },
+        // 8. 查询启用状态菜单的 authCode
+        const menus = await this.prisma.menu.findMany({
+            where: {
+                id: { in: Array.from(menuIds) },
                 status: 0,
-            })
-            .select('authCode')
-            .lean();
+            },
+            select: { authCode: true },
+        });
 
         const ownedAuthCodes = new Set<string>();
         for (const menu of menus) {
@@ -788,7 +995,7 @@ export class PermissionGuard implements CanActivate {
             }
         }
 
-        // 8. 检查是否包含要求的任一权限码
+        // 9. 检查是否包含要求的任一权限码
         const hasPermission = requiredPermissions.some((code) =>
             ownedAuthCodes.has(code),
         );
@@ -808,10 +1015,11 @@ export class PermissionGuard implements CanActivate {
 2.  **无权限声明放行**: 如果接口未声明权限码，直接放行。
 3.  **认证检查**: 检查用户是否已登录（需配合 `AuthGuard` 使用）。
 4.  **admin 超级权限**: `admin` 角色拥有所有权限，直接放行。
-5.  **获取用户角色**: 从数据库查询用户所有启用状态的角色。
-6.  **收集菜单权限**: 遍历角色的 `permissions` 字段（菜单 ID 数组），收集所有有效的菜单 ID。
-7.  **查询权限码**: 根据菜单 ID 查询对应的 `authCode`（仅启用状态的菜单）。
-8.  **权限校验**: 检查用户拥有的权限码是否包含接口要求的任一权限码。
+5.  **获取用户角色**: 从数据库查询用户所有启用状态的角色，包含 `RoleMenu` 关联。
+6.  **isSuper 检查**: 检查是否有 `isSuper: true` 的角色，有则直接放行。
+7.  **收集菜单权限**: 遍历角色的 `menus` 关联（RoleMenu 表），收集所有菜单 ID。
+8.  **查询权限码**: 根据菜单 ID 查询对应的 `authCode`（仅启用状态的菜单）。
+9.  **权限校验**: 检查用户拥有的权限码是否包含接口要求的任一权限码。
 
 -----
 
@@ -1023,7 +1231,7 @@ export class LoggingInterceptor implements NestInterceptor {
 
 **关键点解析:**
 
-1.  **RxJS `tap` 操作符**: 与 `map` 不同，`tap` 操作符允许你执行一些“副作用”（side effect），但**不会修改**流中的数据。在这里，它的副作用就是记录日志。`tap` 在 `Observable` 成功完成时执行，这意味着它会在 Controller 方法成功返回数据之后执行。
+1.  **RxJS `tap` 操作符**: 与 `map` 不同，`tap` 操作符允许你执行一些"副作用"（side effect），但**不会修改**流中的数据。在这里，它的副作用就是记录日志。`tap` 在 `Observable` 成功完成时执行，这意味着它会在 Controller 方法成功返回数据之后执行。
 2.  **日志内容**: 它记录了请求的多个关键信息，包括：
       * **HTTP 方法** (`method`)
       * **请求路径** (`path`)
@@ -1090,13 +1298,13 @@ export class ValidationPipe implements PipeTransform<any> {
         if (!metatype || !this.toValidate(metatype)) {
             return value; // 2. 如果不需要验证，则直接返回原始值
         }
-        
+
         // 3. 将普通的 JavaScript 对象转换为类的实例
         const object = plainToClass(metatype, value);
-        
+
         // 4. 使用 class-validator 进行验证
         const errors = await validate(object);
-        
+
         if (errors.length > 0) {
             // 5. 如果有错误，则提取第一条错误信息并抛出异常
             const errObj = Object.values(errors[0].constraints)[0];
@@ -1105,7 +1313,7 @@ export class ValidationPipe implements PipeTransform<any> {
                 HttpStatus.BAD_REQUEST,
             );
         }
-        
+
         // 6. 如果验证通过，返回转换后的对象实例
         return value;
     }
@@ -1128,7 +1336,7 @@ export class ValidationPipe implements PipeTransform<any> {
 
 4.  **`validate` (来自 `class-validator`)**: 这个函数会检查 `object` 实例上的所有 `class-validator` 装饰器（如 `@IsString`, `@IsNotEmpty`, `@Length` 等），并返回一个包含所有验证错误的数组。如果数组为空，说明验证通过。
 
-5.  **抛出异常**: 如果 `errors` 数组不为空，说明验证失败。管道会提取第一个错误的约束信息（例如，“password must be longer than or equal to 6 characters”），然后将其包装在一个 `HttpException` 中抛出，状态码为 `400 Bad Request`。这个异常随后会被我们之前分析过的 `HttpExceptionFilter` 捕获，并以统一的 JSON 格式返回给前端。
+5.  **抛出异常**: 如果 `errors` 数组不为空，说明验证失败。管道会提取第一个错误的约束信息（例如，"password must be longer than or equal to 6 characters"），然后将其包装在一个 `HttpException` 中抛出，状态码为 `400 Bad Request`。这个异常随后会被我们之前分析过的 `HttpExceptionFilter` 捕获，并以统一的 JSON 格式返回给前端。
 
 6.  **返回 `value`**: 如果验证通过，管道会将原始的 `value`（现在已经是一个类的实例）传递给路由处理函数。
 
@@ -1164,7 +1372,7 @@ export class CreateUserDto {
 
     @IsString()
     @IsNotEmpty()
-    @Length(6, 20) // 密码长度必须在 6 到 20 之间
+    @Length(6, 20)
     password: string;
 }
 ```
@@ -1209,7 +1417,7 @@ export class UserController {
     ```json
     {
         "username": "testuser",
-        "password": "123" 
+        "password": "123"
     }
     ```
 
@@ -1230,7 +1438,7 @@ export class UserController {
         ```
 ## 默认模块 auth
 
-`auth` 模块是整个应用的核心安全模块，它负责处理用户的**认证（Authentication）**，即“用户登录”和“令牌管理”。它与我们之前分析的 `AuthGuard` 和 `RoleGuard` 紧密协作，构成了完整的认证授权流程。
+`auth` 模块是整个应用的核心安全模块，它负责处理用户的**认证（Authentication）**，即"用户登录"和"令牌管理"。它与我们之前分析的 `AuthGuard` 和 `RoleGuard` 紧密协作，构成了完整的认证授权流程。
 
 
 ### **1. `src/modules/auth/auth.module.ts`：认证模块**
@@ -1241,31 +1449,26 @@ export class UserController {
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
 import { JwtStrategy } from './jwt.strategy';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { User, UserSchema } from '../user/entities/user.entity';
-import { UserModule } from '../user/user.module';
+import { UserModule } from '../system/user/user.module';
 
 @Module({
     imports: [
-        // 1. 导入 User 模型，使得 AuthService 可以查询用户数据
-        MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
-        // 2. 导入 UserModule，以便 AuthService 可以复用 UserService 的功能
+        // 导入 UserModule，以便复用 UserService 的功能
         UserModule,
     ],
     controllers: [AuthController],
-    providers: [AuthService, JwtStrategy], // 3. 注册服务和策略
+    providers: [AuthService, JwtStrategy], // 注册服务和策略
 })
 export class AuthModule {}
 ```
 
 **关键点:**
 
-1.  **`MongooseModule.forFeature`**: 导入 `User` 模型，这使得 `AuthService` 可以通过依赖注入的方式直接操作 `users` 集合（查询用户信息以验证登录）。
-2.  **`UserModule`**: 导入 `UserModule`。虽然这里 `AuthService` 没有直接注入 `UserService`，但 `UserModule` 导出了 `UserService`，这是一种模块间依赖关系的体现。
-3.  **`providers`**:
+1.  **`UserModule`**: 导入 `UserModule`，因为认证服务需要查询用户信息。
+2.  **`providers`**:
       * `AuthService`: 包含了登录和创建 Token 的核心业务逻辑。
       * `JwtStrategy`: 包含了验证 JWT 载荷（payload）的逻辑，供 `passport-jwt` 模块使用。
 
@@ -1280,46 +1483,58 @@ export class AuthModule {}
 ```typescript
 import { Injectable, HttpException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
-import { CreateUserDto } from '../user/dto/create-user.dto';
-import { User, UserDocument } from '../user/entities/user.entity';
+import { PrismaService } from '@/common/modules/prisma';
+import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
     constructor(
-        private jwtService: JwtService, // 1. 注入 JWT 服务
-        @InjectModel(User.name) private userModel: Model<UserDocument>, // 2. 注入 User 模型
+        private jwtService: JwtService,     // 1. 注入 JWT 服务
+        private prisma: PrismaService,      // 2. 注入 Prisma 服务
     ) {}
 
-    async login(createUserDto: CreateUserDto) {
-        const { username, password } = createUserDto;
-        // 3. 查找用户
-        const user = await this.userModel.findOne({ username }).lean();
+    async login(loginDto: LoginDto) {
+        const { username, password } = loginDto;
+
+        // 3. 查找用户（包含角色信息）
+        const user = await this.prisma.user.findUnique({
+            where: { username },
+            include: {
+                roles: {
+                    include: { role: true },
+                },
+            },
+        });
+
         if (!user) {
             throw new HttpException({ message: '用户不存在' }, 201);
         }
+
         // 4. 比较密码
         const isMatch = bcrypt.compareSync(password, user.password);
         if (!isMatch) {
             throw new HttpException({ message: '密码错误' }, 201);
         }
-        // 5. 返回用户信息用于生成 Token
+
+        // 5. 提取角色名称
+        const roles = user.roles.map((ur) => ur.role.name);
+
+        // 6. 返回用户信息用于生成 Token
         return {
-            _id: user._id.toString(),
+            _id: user.id,
             username: user.username,
-            roles: user.roles,
+            roles,
         };
     }
 
     async createToken(user: any): Promise<string> {
-        // 6. 使用 jwtService 生成 Token
+        // 7. 使用 jwtService 生成 Token
         return this.jwtService.sign(user);
     }
 
     async logout(): Promise<void> {
-        // 7. 服务端登出逻辑（通常为空）
+        // 8. 服务端登出逻辑（通常为空）
         return;
     }
 }
@@ -1328,12 +1543,13 @@ export class AuthService {
 **关键点:**
 
 1.  **注入 `JwtService`**: 这个服务由 `@nestjs/jwt` 模块提供，包含了 `sign` (签名) 和 `verify` (验证) 等处理 JWT 的核心方法。
-2.  **注入 `userModel`**: 用于直接访问 MongoDB 的 `users` 集合。
-3.  **查找用户**: 在 `login` 方法中，首先根据用户名在数据库中查找用户。
+2.  **注入 `PrismaService`**: 用于访问数据库。
+3.  **查找用户**: 在 `login` 方法中，使用 Prisma 查询用户，并通过 `include` 加载 `UserRole` 和 `Role` 关联。
 4.  **密码验证**: 使用 `bcrypt.compareSync` 来比较用户输入的明文密码和数据库中存储的哈希密码。这是保证密码安全的关键步骤。
-5.  **返回用户信息**: 验证成功后，返回一个不包含敏感信息（如密码）的用户对象。这个对象将作为 JWT 的载荷（Payload）。
-6.  **创建 Token**: `createToken` 方法接收用户信息对象，并调用 `jwtService.sign` 来生成一个 JWT 字符串。
-7.  **登出**: `logout` 方法是空的，这符合 JWT 的无状态特性。JWT 的登出操作通常在客户端完成（例如，删除本地存储的 Token）。
+5.  **提取角色**: 从 `UserRole` 关联中提取角色名称数组。
+6.  **返回用户信息**: 验证成功后，返回一个不包含敏感信息（如密码）的用户对象。这个对象将作为 JWT 的载荷（Payload）。
+7.  **创建 Token**: `createToken` 方法接收用户信息对象，并调用 `jwtService.sign` 来生成一个 JWT 字符串。
+8.  **登出**: `logout` 方法是空的，这符合 JWT 的无状态特性。JWT 的登出操作通常在客户端完成（例如，删除本地存储的 Token）。
 
 -----
 
@@ -1346,16 +1562,16 @@ export class AuthService {
 ```typescript
 import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto } from '../user/dto/create-user.dto';
+import { LoginDto } from './dto/login.dto';
 
 @Controller('auth')
 export class AuthController {
     constructor(private readonly authService: AuthService) {}
 
     @Post('login')
-    async login(@Body() createUserDto: CreateUserDto) {
+    async login(@Body() loginDto: LoginDto) {
         // 1. 调用 AuthService 的 login 方法进行验证
-        const user = await this.authService.login(createUserDto);
+        const user = await this.authService.login(loginDto);
         // 2. 验证成功后，创建 Token
         const token = await this.authService.createToken(user);
         // 3. 返回 Token 和用户信息给客户端
@@ -1380,7 +1596,7 @@ export class AuthController {
 **关键点:**
 
 1.  **`@Post('login')`**: 定义了处理 `POST /api/auth/login` 请求的方法。
-2.  **`@Body()`**: 使用 `@Body()` 装饰器来获取请求体中的数据，并期望它符合 `CreateUserDto` 的结构。`ValidationPipe` 会在这里自动进行验证。
+2.  **`@Body()`**: 使用 `@Body()` 装饰器来获取请求体中的数据，并期望它符合 `LoginDto` 的结构。`ValidationPipe` 会在这里自动进行验证。
 3.  **返回 `accessToken`**: 登录成功后，将生成的 JWT 以 `accessToken` 的字段名返回给客户端。客户端在后续的请求中需要将此 Token 放在 `Authorization` 请求头中。
 
 -----
@@ -1433,7 +1649,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
       * 客户端向 `POST /api/auth/login` 发送用户名和密码。
       * `AuthController` 接收请求，并调用 `AuthService.login()`。
-      * `AuthService` 查询数据库，使用 `bcrypt` 比较密码。
+      * `AuthService` 通过 Prisma 查询数据库，使用 `bcrypt` 比较密码。
       * 验证成功后，`AuthService` 调用 `createToken()`，使用 `JwtService` 生成一个包含用户ID、用户名和角色的 JWT。
       * `AuthController` 将 JWT 和用户信息返回给客户端。
 
@@ -1442,81 +1658,61 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       * 客户端向一个受 `@UseGuards(AuthGuard)` 保护的接口（如 `GET /api/user/info`）发起请求，并在 `Authorization` 头中携带 `Bearer <JWT>`。
       * `AuthGuard` 拦截请求，从请求头中提取 Token。
       * `AuthGuard` 调用 `JwtService.verifyAsync()` 来验证 Token。这个过程内部会使用 `JwtStrategy` 中配置的密钥。
-      * 验证成功后，`AuthGuard` 从 Token 载荷中获取 `_id`，查询数据库得到完整的 `user` 对象，并将其挂载到 `request.user`。
+      * 验证成功后，`AuthGuard` 从 Token 载荷中获取 `_id`，通过 Prisma 查询数据库得到完整的 `user` 对象，并将其挂载到 `request.user`。
       * 请求继续被处理，此时控制器中的 `req.user` 就包含了当前登录用户的信息。
 
 ## 默认模块 user
 
 这个模块是应用中与用户相关的核心业务模块，它负责管理用户数据，包括用户的创建、查询以及定义用户的数据结构。它与 `auth` 模块紧密相连，为认证和授权提供了基础数据支持。
 
-### **1. `src/modules/system/user/entities/user.entity.ts`：用户实体/模型**
+### **1. 用户数据模型 (Prisma Schema)**
 
-这个文件定义了用户数据在 MongoDB 中存储的结构（Schema）。
+用户数据在 Prisma Schema 中定义如下：
 
-**代码分析:**
+```prisma
+model User {
+  id        String     @id @default(uuid())
+  username  String     @unique
+  password  String
+  nickName  String
+  email     String?    @unique
+  phone     String?    @unique
+  avatar    String?
+  status    Int        @default(0)
+  deptId    String?
+  remark    String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
-```typescript
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
-
-export enum Role { // 1. 定义角色枚举
-    SUPER = 'super',
-    ADMIN = 'admin',
-    USER = 'user',
+  dept      Dept?      @relation(fields: [deptId], references: [id])
+  roles     UserRole[]
 }
 
-@Schema({ timestamps: true }) // 2. 定义 Mongoose Schema
-export class User {
-    @Prop({ required: true })
-    username: string;
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
-    @Prop({ required: true })
-    password: string;
-
-    @Prop({
-        type: [String],
-        enum: [Role.SUPER, Role.ADMIN, Role.USER],
-        default: [Role.USER], // 3. 默认角色为 'user'
-        required: true,
-    })
-    roles: Role[];
+  @@id([userId, roleId])
 }
-
-export type UserDocument = HydratedDocument<User>;
-
-export const UserSchema = SchemaFactory.createForClass(User);
 ```
 
 **关键点:**
 
-1.  **`Role` 枚举**: 定义了系统中存在的三种角色：`super` (超级管理员), `admin` (管理员), 和 `user` (普通用户)。使用枚举可以提高代码的可读性和可维护性。
-2.  **`@Schema({ timestamps: true })`**: 这个装饰器告诉 Mongoose，当创建或更新文档时，自动添加 `createdAt` 和 `updatedAt` 两个时间戳字段。
-3.  **`@Prop` 装饰器**: 用于定义 Schema 中的字段。
-      * `username` 和 `password` 都是必需的字符串。
-      * `roles` 是一个字符串数组，其值必须是 `Role` 枚举中定义的值。它的默认值是 `[Role.USER]`，意味着新注册的用户默认为普通用户角色。
+1.  **UUID 主键**: 使用 `@default(uuid())` 生成唯一标识符，支持多数据库。
+2.  **关联表 `UserRole`**: 用户和角色通过多对多关联表连接，替代了原来的 `roles: string[]` 数组。
+3.  **部门关联**: 通过 `deptId` 外键关联到 `Dept` 表。
 
 -----
 
-### **2. `src/modules/system/user/dto/create-user.dto.ts` 和 `update-user.dto.ts`：数据传输对象**
+### **2. `src/modules/system/user/dto/`：数据传输对象**
 
 DTO (Data Transfer Object) 用于定义接口的输入/输出数据结构，并配合 `ValidationPipe` 进行数据验证。
 
-  * **`create-user.dto.ts`**: 定义了创建用户（注册）时需要传递的数据结构和验证规则。
-    ```typescript
-    import { IsNotEmpty, IsString, Length } from 'class-validator';
-    // ...
-    export class CreateUserDto {
-        @IsString()
-        @IsNotEmpty()
-        username: string;
-
-        @IsString()
-        @IsNotEmpty()
-        @Length(6, 20)
-        password: string;
-    }
-    ```
-  * **`update-user.dto.ts`**: 定义了更新用户时的数据结构。它使用了 `@nestjs/mapped-types` 的 `PartialType`，这意味着 `UpdateUserDto` 继承了 `CreateUserDto` 的所有属性，但将它们都变成了可选的。
+  * **`create-user.dto.ts`**: 定义了创建用户（管理员）时需要传递的数据结构和验证规则。
+  * **`register-user.dto.ts`**: 定义了用户注册时的数据结构，仅允许提交基本信息。
+  * **`update-user.dto.ts`**: 定义了更新用户时的数据结构，使用 `PartialType` 使所有属性可选。
 
 -----
 
@@ -1528,41 +1724,64 @@ DTO (Data Transfer Object) 用于定义接口的输入/输出数据结构，并�
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { PrismaService } from '@/common/modules/prisma';
 import * as bcrypt from 'bcryptjs';
 import { CreateUserDto } from './dto/create-user.dto';
-import { User, UserDocument } from './entities/user.entity';
 
 @Injectable()
 export class UserService {
-    constructor(
-        @InjectModel(User.name) private userModel: Model<UserDocument>,
-    ) {}
+    constructor(private readonly prisma: PrismaService) {}
 
-    async create(createUserDto: CreateUserDto): Promise<UserDocument> {
-        // 1. 生成盐并哈希密码
+    async create(createUserDto: CreateUserDto) {
+        // 1. 密码加密
         const salt = await bcrypt.genSalt(10);
-        const data = {
-            ...createUserDto,
-            password: await bcrypt.hash(createUserDto.password, salt),
-        };
-        // 2. 创建用户
-        return this.userModel.create(data);
+        const hashedPassword = await bcrypt.hash(createUserDto.password, salt);
+
+        // 2. 查找角色
+        const roles = await this.prisma.role.findMany({
+            where: { name: { in: createUserDto.roles || ['user'] } },
+        });
+
+        // 3. 创建用户（包含 UserRole 关联）
+        const user = await this.prisma.user.create({
+            data: {
+                username: createUserDto.username,
+                password: hashedPassword,
+                nickName: createUserDto.nickName,
+                // ... 其他字段
+                roles: {
+                    create: roles.map((role) => ({ roleId: role.id })),
+                },
+            },
+            include: {
+                roles: { include: { role: true } },
+            },
+        });
+
+        return this.toResponseDto(user);
     }
 
-    findOne(id: string): Promise<UserDocument> {
-        // 3. 根据 ID 查找用户，并排除密码字段
-        return this.userModel.findById(id).select('-password').exec();
+    findOne(id: string) {
+        // 4. 根据 ID 查找用户，排除密码字段
+        return this.prisma.user.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                username: true,
+                nickName: true,
+                // ... 排除 password
+                roles: { include: { role: true } },
+            },
+        });
     }
 }
 ```
 
 **关键点:**
 
-1.  **密码哈希**: 在 `create` 方法中，并没有直接存储用户提交的明文密码。而是使用 `bcryptjs` 库，先生成一个随机的“盐”（salt），然后将密码和盐结合进行哈希运算。这是一种标准的、安全的密码存储方式，可以有效防止即使数据库泄露，用户的原始密码也不会暴露。
-2.  **创建用户**: 调用 `this.userModel.create(data)` 将处理过的数据存入 MongoDB。
-3.  **查询用户**: `findOne` 方法用于根据用户 ID 查询用户信息。值得注意的是，它使用了 `.select('-password')`，这会确保在查询结果中**排除** `password` 字段，避免将密码哈希值泄露给不必要的业务逻辑中。
+1.  **密码哈希**: 使用 `bcryptjs` 库进行密码加密存储。
+2.  **角色关联**: 通过 `roles.create` 在创建用户时同时创建 `UserRole` 关联记录。
+3.  **查询优化**: 使用 `select` 排除敏感字段（如密码），使用 `include` 加载关联数据。
 
 -----
 
@@ -1570,73 +1789,50 @@ export class UserService {
 
 控制器负责处理与用户相关的 HTTP 请求，并调用 `UserService` 来完成具体的业务逻辑。
 
-**代码分析:**
-
 ```typescript
-import {
-    Controller,
-    Post,
-    Body,
-    UseGuards,
-    Request,
-    Get,
-} from '@nestjs/common';
-import { UserService } from './user.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { AuthGuard } from '@/common/guards/auth.guard';
-
 @Controller('user')
 export class UserController {
     constructor(private readonly userService: UserService) {}
 
-    @UseGuards(AuthGuard) // 1. 应用认证守卫
+    @UseGuards(AuthGuard)
     @Get('info')
     async getInfo(@Request() req) {
-        console.log(req.user);
         return req.user;
     }
 
-    @Post('register') // 2. 用户注册接口
-    register(@Body() createUserDto: CreateUserDto) {
-        return this.userService.create(createUserDto);
+    @Post('register')
+    register(@Body() registerUserDto: RegisterUserDto) {
+        return this.userService.register(registerUserDto);
     }
 }
 ```
-
-**关键点:**
-
-1.  **`@Get('info')`**: 这个端点用于获取当前登录用户的信息。它被 `@UseGuards(AuthGuard)` 保护，意味着只有携带有效 Token 的用户才能访问。它直接返回 `req.user`，这个 `user` 对象是由 `AuthGuard` 在验证 Token 后附加到 `request` 上的。
-2.  **`@Post('register')`**: 这个端点用于用户注册。它接收一个 `CreateUserDto` 类型的请求体，`ValidationPipe` 会自动验证这个 DTO。然后，它调用 `userService.create` 方法来创建新用户。
 
 -----
 
 ### **5. `src/modules/system/user/user.module.ts`：用户模块**
 
-最后，模块文件将以上所有部分组合在一起。
+模块文件将以上所有部分组合在一起。
 
 ```typescript
 @Module({
-    imports: [
-        MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
-    ],
-    controllers: [UserController],
-    providers: [UserService, AuthGuard], // 1. 提供 AuthGuard
-    exports: [UserService], // 2. 导出 UserService
+    controllers: [UserController, SystemUserController],
+    providers: [UserService, AuthGuard],
+    exports: [UserService, AuthGuard],
 })
 export class UserModule {}
 ```
 
 **关键点:**
 
-1.  **`providers`**: 在这里提供了 `UserService` 和 `AuthGuard`。值得注意的是，`AuthGuard` 也在这里被提供，因为它依赖于 `UserService`。
-2.  **`exports`**: `UserModule` 导出了 `UserService`。这使得其他导入了 `UserModule` 的模块（例如 `AuthModule`）可以直接注入和使用 `UserService`，这是 NestJS 模块化系统实现依赖共享的关键。
+1.  **无需导入 MongooseModule**: 因为 `PrismaModule` 是全局模块。
+2.  **`exports`**: `UserModule` 导出了 `UserService` 和 `AuthGuard`，供其他模块使用。
 
 ### **总结**
 
 `user` 模块是一个功能内聚的单元，它完整地封装了用户管理的全部逻辑：
 
-  * **定义了数据模型** (`user.entity.ts`) 和 **接口数据结构** (`dto/`)。
-  * **处理核心业务逻辑** (`user.service.ts`)，特别是像密码加密这样的安全操作。
+  * **定义了 Prisma 数据模型** 和 **接口数据结构** (`dto/`)。
+  * **处理核心业务逻辑** (`user.service.ts`)，特别是像密码加密和角色关联这样的操作。
   * **暴露安全的 API 端点** (`user.controller.ts`)，并通过守卫进行保护。
   * **封装并导出服务** (`user.module.ts`)，供其他模块复用。
 
@@ -1857,24 +2053,25 @@ DTO 文件定义了 API 响应的数据结构，并利用 `@nestjs/swagger` 的 
 │ - status                            │
 └──────────────┬──────────────────────┘
                │
-               │ (一对多)
+               │ (通过 RoleMenu 关联)
                ▼
     ┌────────────────────────┐
     │   Role Entity          │
     ├────────────────────────┤
     │ - name (唯一)          │
-    │ - permissions[]        │
-    │   (菜单ID数组)         │
+    │ - isSuper (超级管理员) │
+    │ - isBuiltin (内置角色) │
     │ - status               │
+    │ - menus[] (RoleMenu)   │
     └───────────┬────────────┘
                │
-               │ (多对多)
+               │ (通过 UserRole 关联)
                ▼
     ┌─────────────────────────┐
     │   User Entity           │
     ├─────────────────────────┤
     │ - username (唯一)       │
-    │ - roles[] (角色名数组)  │
+    │ - roles[] (UserRole)    │
     │ - deptId (部门ID)       │
     │ - status                │
     └──────────┬──────────────┘
@@ -1898,34 +2095,50 @@ DTO 文件定义了 API 响应的数据结构，并利用 `@nestjs/swagger` 的 
 
 菜单管理模块负责管理系统的菜单结构，支持树形结构和多种菜单类型。
 
-#### **数据模型**
+#### **数据模型 (Prisma)**
 
-**MenuEntity 主要字段：**
+```prisma
+model Menu {
+  id                  String     @id @default(uuid())
+  name                String     @unique
+  title               String
+  parentId            String?
+  path                String
+  component           String?
+  type                MenuType
+  authCode            String?
+  order               Int        @default(0)
+  status              Int        @default(0)
+  icon                String?
+  activeIcon          String?
+  keepAlive           Boolean    @default(false)
+  affixTab            Boolean    @default(false)
+  hideInMenu          Boolean    @default(false)
+  hideChildrenInMenu  Boolean    @default(false)
+  hideInBreadcrumb    Boolean    @default(false)
+  hideInTab           Boolean    @default(false)
+  iframeSrc           String?
+  link                String?
+  activePath          String?
+  badge               String?
+  badgeType           BadgeType?
+  badgeVariants       BadgeVariants?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
-| 字段 | 类型 | 描述 |
-| :-- | :-- | :-- |
-| `name` | String (唯一) | 菜单名称/路由 name |
-| `title` | String | 菜单标题（用于显示） |
-| `parentId` | ObjectId | 父级菜单 ID，支持树形结构 |
-| `path` | String | 路由路径 |
-| `component` | String | 组件路径 |
-| `type` | Enum | 菜单类型：CATALOG(目录) / MENU(菜单) / BUTTON(按钮) / EMBEDDED(内嵌) / LINK(外链) |
-| `authCode` | String | 权限标识码，用于权限控制 |
-| `order` | Number | 排序值，越小越靠前 |
-| `status` | Number | 状态：0-启用 / 1-停用 |
-| `icon` / `activeIcon` | String | 菜单图标及激活图标 |
-| `keepAlive` | Boolean | 是否缓存页面 |
-| `affixTab` | Boolean | 是否固定在标签栏 |
-| `hideInMenu` | Boolean | 是否在菜单中隐藏 |
-| `hideChildrenInMenu` | Boolean | 是否隐藏子菜单 |
-| `hideInBreadcrumb` | Boolean | 是否在面包屑中隐藏 |
-| `hideInTab` | Boolean | 是否在标签栏隐藏 |
-| `badge` | String | 徽标内容 |
-| `badgeType` | String | 徽标类型：dot / normal |
-| `badgeVariants` | String | 徽标颜色 |
-| `iframeSrc` | String | 内嵌页面地址 |
-| `link` | String | 外链地址 |
-| `activePath` | String | 激活路径 |
+  parent              Menu?      @relation("MenuTree", fields: [parentId], references: [id])
+  children            Menu[]     @relation("MenuTree")
+  roles               RoleMenu[]
+}
+
+enum MenuType {
+  CATALOG
+  MENU
+  BUTTON
+  EMBEDDED
+  LINK
+}
+```
 
 #### **API 接口**
 
@@ -1942,53 +2155,31 @@ DTO 文件定义了 API 响应的数据结构，并利用 `@nestjs/swagger` 的 
 | PUT | `/api/menu/:id` | 更新菜单 | system:menu:update |
 | DELETE | `/api/menu/:id` | 删除菜单 | system:menu:delete |
 
-#### **核心服务方法**
-
-```typescript
-// MenuService 主要方法
-class MenuService {
-    // 创建菜单，检查名称唯一性、父级存在性
-    async create(createMenuDto: CreateMenuDto): Promise<Menu>;
-
-    // 查询菜单列表，返回树结构
-    async findAll(queryMenuDto: QueryMenuDto): Promise<MenuTreeNode[]>;
-
-    // 更新菜单，防止循环引用
-    async update(id: string, updateMenuDto: UpdateMenuDto): Promise<Menu>;
-
-    // 删除菜单，检查是否有子菜单
-    async delete(id: string): Promise<void>;
-
-    // 获取动态路由（符合 vben 前端格式）
-    async getRoutes(): Promise<RouteItem[]>;
-
-    // 根据用户角色获取动态路由
-    async getRoutesByRoles(roleNames: string[]): Promise<RouteItem[]>;
-
-    // 根据用户角色获取权限码列表
-    async getAccessCodesByRoles(roleNames: string[]): Promise<string[]>;
-}
-```
-
 -----
 
 ### **部门管理模块 (`src/modules/system/dept`)**
 
 部门管理模块负责管理组织架构，支持树形结构。
 
-#### **数据模型**
+#### **数据模型 (Prisma)**
 
-**DeptEntity 主要字段：**
+```prisma
+model Dept {
+  id        String   @id @default(uuid())
+  name      String
+  pid       String?
+  status    Int      @default(0)
+  remark    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-| 字段 | 类型 | 描述 |
-| :-- | :-- | :-- |
-| `name` | String | 部门名称 |
-| `pid` | ObjectId | 父级部门 ID，根节点为 null |
-| `status` | Number | 状态：0-启用 / 1-停用 |
-| `remark` | String | 备注 |
+  parent    Dept?    @relation("DeptTree", fields: [pid], references: [id])
+  children  Dept[]   @relation("DeptTree")
+  users     User[]
 
-**索引约束：**
-- 复合唯一索引 `{pid: 1, name: 1}` - 同一父级下部门名称唯一
+  @@unique([pid, name])
+}
+```
 
 #### **API 接口**
 
@@ -1999,44 +2190,49 @@ class MenuService {
 | PUT | `/api/system/dept/:id` | 更新部门 | system:dept:update |
 | DELETE | `/api/system/dept/:id` | 删除部门 | system:dept:delete |
 
-#### **核心服务方法**
-
-```typescript
-// DeptService 主要方法
-class DeptService {
-    // 创建部门，检查父级有效性和同级名称唯一性
-    async create(createDeptDto: CreateDeptDto): Promise<Dept>;
-
-    // 获取部门树列表，支持状态和名称过滤
-    async findAll(queryDeptDto: QueryDeptDto): Promise<DeptTreeNode[]>;
-
-    // 更新部门，防止循环引用，校验同级名称唯一
-    async update(id: string, updateDeptDto: UpdateDeptDto): Promise<Dept>;
-
-    // 删除部门，检查是否有子部门
-    async remove(id: string): Promise<void>;
-}
-```
-
 -----
 
 ### **角色管理模块 (`src/modules/system/role`)**
 
 角色管理模块负责管理系统角色，是权限体系的核心。
 
-#### **数据模型**
+#### **数据模型 (Prisma)**
 
-**RoleEntity 主要字段：**
+```prisma
+model Role {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  remark    String     @default("")
+  status    Int        @default(0)
+  isBuiltin Boolean    @default(false)
+  isSuper   Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
-| 字段 | 类型 | 描述 |
-| :-- | :-- | :-- |
-| `name` | String (唯一) | 角色名称 |
-| `permissions` | String[] | 关联的菜单 ID 数组（用于权限控制） |
-| `remark` | String | 备注 |
-| `status` | Number | 状态：0-启用 / 1-停用 |
+  users     UserRole[]
+  menus     RoleMenu[]
+}
+
+model RoleMenu {
+  roleId String
+  menuId String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  menu   Menu   @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, menuId])
+}
+```
+
+**关键字段说明:**
+
+| 字段 | 说明 |
+| :-- | :-- |
+| `isBuiltin` | 是否为内置角色（内置角色不可删除、不可修改名称） |
+| `isSuper` | 是否为超级管理员（拥有所有权限，无需检查 RoleMenu） |
+| `menus` | 通过 RoleMenu 关联表关联的菜单列表 |
 
 **内置角色：**
-- `admin` - 超级管理员，拥有所有权限（permissions: ['*']）
+- `admin` - 超级管理员，`isSuper: true`，拥有所有权限
 - `user` - 普通用户，默认角色
 
 #### **API 接口**
@@ -2050,67 +2246,42 @@ class DeptService {
 | PUT | `/api/system/role/:id` | 更新角色 | system:role:update |
 | DELETE | `/api/system/role/:id` | 删除角色 | system:role:delete |
 
-#### **核心服务方法**
-
-```typescript
-// RoleService 主要方法
-class RoleService {
-    // 创建角色，检查名称唯一性
-    async create(createRoleDto: CreateRoleDto): Promise<Role>;
-
-    // 分页查询角色列表，支持状态和名称过滤
-    async findAll(queryRoleDto: QueryRoleDto): Promise<{ list: Role[], total: number }>;
-
-    // 更新角色，限制内置角色修改
-    async update(id: string, updateRoleDto: UpdateRoleDto): Promise<Role>;
-
-    // 删除角色，检查是否有用户使用该角色
-    async remove(id: string): Promise<void>;
-
-    // 获取所有启用的角色（用于下拉选择）
-    async findAllEnabled(): Promise<Role[]>;
-
-    // 初始化内置角色（应用启动时调用）
-    async initBuiltinRoles(): Promise<void>;
-}
-```
-
 -----
 
 ### **用户管理模块 (`src/modules/system/user`) - 更新**
 
 用户模块在原有基础上进行了扩展，增加了系统管理相关功能。
 
-#### **数据模型更新**
+#### **数据模型 (Prisma)**
 
-**UserEntity 更新后的字段：**
+```prisma
+model User {
+  id        String     @id @default(uuid())
+  username  String     @unique
+  password  String
+  nickName  String
+  email     String?    @unique
+  phone     String?    @unique
+  avatar    String?
+  status    Int        @default(0)
+  deptId    String?
+  remark    String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
-| 字段 | 类型 | 描述 |
-| :-- | :-- | :-- |
-| `username` | String (唯一) | 用户名 |
-| `password` | String | 密码（加盐 hash 存储） |
-| `nickName` | String | 用户昵称 |
-| `email` | String (唯一, sparse) | 邮箱（可为空） |
-| `phone` | String (唯一, sparse) | 手机号（可为空） |
-| `avatar` | String | 头像 URL |
-| `status` | Number | 状态：0-启用 / 1-停用 |
-| `deptId` | ObjectId | 部门 ID |
-| `remark` | String | 备注 |
-| `roles` | String[] | 角色名称列表，默认 ['user'] |
+  dept      Dept?      @relation(fields: [deptId], references: [id])
+  roles     UserRole[]
+}
 
-#### **DTO 说明**
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
-**RegisterUserDto（用户注册）：**
-- 仅允许提交：username、password、nickName
-- 强制使用默认角色和启用状态，防止提权
-
-**CreateUserDto（管理员创建）：**
-- 允许提交所有字段
-- 支持设置角色、部门等
-
-**UpdateUserDto（更新用户）：**
-- 继承 CreateUserDto 但排除 username 和 password（不可修改）
-- 所有字段均为可选
+  @@id([userId, roleId])
+}
+```
 
 #### **API 接口**
 
@@ -2133,37 +2304,6 @@ class RoleService {
 | PUT | `/api/system/user/:id/status` | 更新用户状态 | system:user:update |
 | PUT | `/api/system/user/:id/reset-password` | 重置用户密码 | system:user:reset-password |
 
-#### **核心服务方法**
-
-```typescript
-// UserService 更新后的方法
-class UserService {
-    // 创建用户（管理员接口），检查唯一性，密码加密
-    async create(createUserDto: CreateUserDto): Promise<User>;
-
-    // 用户注册（公开接口），强制使用默认角色和启用状态
-    async register(registerUserDto: RegisterUserDto): Promise<User>;
-
-    // 分页查询用户列表，支持多条件过滤
-    async findAll(queryUserDto: QueryUserDto): Promise<{ list: User[], total: number }>;
-
-    // 根据 ID 查询用户详情
-    async findById(id: string): Promise<User>;
-
-    // 更新用户信息，不允许修改 username 和 password
-    async update(id: string, updateUserDto: UpdateUserDto): Promise<User>;
-
-    // 删除用户
-    async remove(id: string): Promise<void>;
-
-    // 更新用户状态
-    async updateStatus(id: string, status: number): Promise<User>;
-
-    // 重置用户密码（管理员）
-    async resetPassword(id: string, password: string): Promise<void>;
-}
-```
-
 -----
 
 ## 日志监控模块
@@ -2174,27 +2314,28 @@ class UserService {
 
 操作日志模块自动记录系统中的关键操作，包括用户的增删改查等行为，便于追踪和审计。
 
-#### **数据模型**
+#### **数据模型 (Prisma)**
 
-**OperLogEntity 主要字段：**
-
-| 字段 | 类型 | 描述 |
-| :-- | :-- | :-- |
-| `title` | String | 模块标题（如：用户管理、角色管理） |
-| `businessType` | Number | 业务类型（枚举值） |
-| `method` | String | 方法名称（控制器.方法） |
-| `requestMethod` | String | 请求方式（GET/POST/PUT/DELETE） |
-| `operName` | String | 操作人员用户名 |
-| `deptName` | String | 操作人员部门名称 |
-| `operUrl` | String | 请求 URL |
-| `operIp` | String | 操作 IP 地址 |
-| `operLocation` | String | 操作地点 |
-| `operParam` | String | 请求参数（JSON 字符串） |
-| `jsonResult` | String | 返回结果（JSON 字符串） |
-| `status` | Number | 操作状态：0-成功 / 1-失败 |
-| `errorMsg` | String | 错误消息（失败时记录） |
-| `operTime` | Date | 操作时间 |
-| `costTime` | Number | 消耗时间（毫秒） |
+```prisma
+model OperLog {
+  id            String   @id @default(uuid())
+  title         String
+  businessType  Int      @default(0)
+  method        String?
+  requestMethod String?
+  operName      String?
+  deptName      String?
+  operUrl       String?
+  operIp        String?
+  operLocation  String?
+  operParam     String?  @db.Text
+  jsonResult    String?  @db.Text
+  status        Int      @default(0)
+  errorMsg      String?  @db.Text
+  operTime      DateTime @default(now())
+  costTime      Int      @default(0)
+}
+```
 
 **业务类型枚举 (BusinessTypeEnum)：**
 
@@ -2214,32 +2355,10 @@ class UserService {
 
 | 方法 | 路径 | 描述 | 权限码 |
 | :-- | :-- | :-- | :-- |
-| GET | `/api/monitor/operlog/list` | 查询操作日志列表（分页） | monitor:operlog:list |
-| GET | `/api/monitor/operlog/:id` | 查询操作日志详情 | monitor:operlog:query |
-| DELETE | `/api/monitor/operlog/clean` | 清空所有操作日志 | monitor:operlog:delete |
-| DELETE | `/api/monitor/operlog/:ids` | 删除操作日志（支持批量，逗号分隔） | monitor:operlog:delete |
-
-#### **核心服务方法**
-
-```typescript
-// OperLogService 主要方法
-class OperLogService {
-    // 创建操作日志（由装饰器自动调用）
-    async create(createOperLogDto: CreateOperLogDto): Promise<OperLog>;
-
-    // 分页查询操作日志列表，支持多条件过滤
-    async findAll(queryOperLogDto: QueryOperLogDto): Promise<{ list: OperLog[], total: number }>;
-
-    // 根据 ID 查询操作日志详情
-    async findOne(id: string): Promise<OperLog | null>;
-
-    // 批量删除操作日志
-    async remove(ids: string[]): Promise<{ deletedCount: number }>;
-
-    // 清空所有操作日志
-    async clean(): Promise<{ deletedCount: number }>;
-}
-```
+| GET | `/api/system/log/list` | 查询操作日志列表（分页） | system:log:list |
+| GET | `/api/system/log/:id` | 查询操作日志详情 | system:log:query |
+| DELETE | `/api/system/log/clean` | 清空所有操作日志 | system:log:delete |
+| DELETE | `/api/system/log/:ids` | 删除操作日志（支持批量，逗号分隔） | system:log:delete |
 
 #### **使用 @Log 装饰器**
 
@@ -2301,18 +2420,6 @@ export class UserController {
 }
 ```
 
-#### **已集成 @Log 装饰器的模块**
-
-以下模块的增删改操作已自动记录操作日志：
-
-| 模块 | 操作 | title |
-| :-- | :-- | :-- |
-| 用户管理 | 创建、更新、删除、更新状态、重置密码 | 用户管理 |
-| 角色管理 | 创建、更新、删除 | 角色管理 |
-| 部门管理 | 创建、更新、删除 | 部门管理 |
-| 菜单管理 | 创建、更新、删除 | 菜单管理 |
-| 操作日志 | 删除、清空 | 操作日志管理 |
-
 -----
 
 ### **权限码命名规范**
@@ -2344,9 +2451,9 @@ system:menu:create    - 创建菜单
 system:menu:update    - 更新菜单
 system:menu:delete    - 删除菜单
 
-monitor:operlog:list    - 操作日志列表
-monitor:operlog:query   - 操作日志查询
-monitor:operlog:delete  - 删除/清空操作日志
+system:log:list       - 操作日志列表
+system:log:query      - 操作日志查询
+system:log:delete     - 删除/清空操作日志
 ```
 
 -----
@@ -2361,7 +2468,7 @@ monitor:operlog:delete  - 删除/清空操作日志
     "message": "请求成功",
     "data": {
         "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-        "id": "507f1f77bcf86cd799439011",
+        "id": "550e8400-e29b-41d4-a716-446655440000",
         "username": "admin",
         "roles": ["admin"],
         "realName": "管理员"
@@ -2376,7 +2483,7 @@ monitor:operlog:delete  - 删除/清空操作日志
     "code": 0,
     "message": "请求成功",
     "data": {
-        "id": "507f1f77bcf86cd799439011",
+        "id": "550e8400-e29b-41d4-a716-446655440000",
         "username": "admin",
         "realName": "管理员",
         "avatar": "https://...",
@@ -2385,3 +2492,19 @@ monitor:operlog:delete  - 删除/清空操作日志
     }
 }
 ```
+
+---
+
+## NPM Scripts
+
+| 命令 | 描述 |
+| :-- | :-- |
+| `pnpm start:dev` | 启动开发服务器（热重载） |
+| `pnpm build` | 构建生产版本 |
+| `pnpm start:prod` | 启动生产服务器 |
+| `pnpm prisma:postgres` | 生成 PostgreSQL Prisma Client |
+| `pnpm prisma:mysql` | 生成 MySQL Prisma Client |
+| `pnpm prisma:mongo` | 生成 MongoDB Prisma Client |
+| `pnpm init:admin` | 初始化管理员数据 |
+| `pnpm lint` | 运行 ESLint 检查 |
+| `pnpm test` | 运行测试 |

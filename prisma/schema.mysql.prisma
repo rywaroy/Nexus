@@ -1,0 +1,213 @@
+// Prisma Schema for MySQL
+// 使用方式: pnpm prisma:mysql
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 枚举类型 ====================
+
+/// 菜单类型
+enum MenuType {
+  CATALOG  // 目录
+  MENU     // 菜单
+  BUTTON   // 按钮
+  EMBEDDED // 内嵌页面
+  LINK     // 外链
+}
+
+/// 徽标类型
+enum BadgeType {
+  DOT    // 圆点
+  NORMAL // 普通
+}
+
+/// 徽标颜色
+enum BadgeVariants {
+  DEFAULT
+  DESTRUCTIVE
+  PRIMARY
+  SUCCESS
+  WARNING
+}
+
+// ==================== 用户模块 ====================
+
+/// 用户表
+model User {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  username  String   @unique @db.VarChar(50)
+  password  String   @db.VarChar(255)
+  nickName  String   @db.VarChar(50)
+  email     String?  @unique @db.VarChar(100)
+  phone     String?  @unique @db.VarChar(20)
+  avatar    String?  @db.VarChar(500)
+  status    Int      @default(0) @db.TinyInt // 0-启用，1-停用
+  deptId    String?  @db.VarChar(36)
+  remark    String?  @db.VarChar(500)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  dept  Dept?      @relation(fields: [deptId], references: [id], onDelete: SetNull)
+  roles UserRole[]
+
+  @@index([deptId])
+  @@index([status])
+  @@map("users")
+}
+
+/// 角色表
+model Role {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  name      String   @unique @db.VarChar(50)
+  remark    String   @default("") @db.VarChar(500)
+  status    Int      @default(0) @db.TinyInt // 0-启用，1-停用
+  isBuiltin Boolean  @default(false) // 是否内置角色
+  isSuper   Boolean  @default(false) // 是否超级管理员（拥有所有权限）
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  users UserRole[]
+  menus RoleMenu[]
+
+  @@index([status])
+  @@map("roles")
+}
+
+/// 用户-角色关联表
+model UserRole {
+  userId     String   @db.VarChar(36)
+  roleId     String   @db.VarChar(36)
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// ==================== 部门模块 ====================
+
+/// 部门表（树形结构）
+model Dept {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  name      String   @db.VarChar(100)
+  pid       String?  @db.VarChar(36) // 父级部门ID
+  status    Int      @default(0) @db.TinyInt // 0-启用，1-停用
+  remark    String?  @db.VarChar(500)
+  treePath  String?  @default("") @db.VarChar(1000) // 物化路径
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 自关联
+  parent   Dept?  @relation("DeptTree", fields: [pid], references: [id], onDelete: SetNull)
+  children Dept[] @relation("DeptTree")
+
+  // 关联用户
+  users User[]
+
+  @@unique([pid, name]) // 同一父级下部门名称唯一
+  @@index([pid])
+  @@index([status])
+  @@map("depts")
+}
+
+// ==================== 菜单模块 ====================
+
+/// 菜单表（树形结构）
+model Menu {
+  id                 String        @id @default(uuid()) @db.VarChar(36)
+  name               String        @unique @db.VarChar(100) // 路由名称
+  title              String        @db.VarChar(100) // 显示标题
+  parentId           String?       @db.VarChar(36) // 父级菜单ID
+  path               String        @db.VarChar(500) // 路由路径
+  component          String?       @db.VarChar(500) // 组件路径
+  type               MenuType // 菜单类型
+  authCode           String?       @db.VarChar(100) // 权限标识
+  order              Int           @default(0) // 排序
+  status             Int           @default(0) @db.TinyInt // 0-启用，1-停用
+  icon               String?       @db.VarChar(100)
+  activeIcon         String?       @db.VarChar(100)
+  keepAlive          Boolean       @default(false)
+  affixTab           Boolean       @default(false)
+  hideInMenu         Boolean       @default(false)
+  hideChildrenInMenu Boolean       @default(false)
+  hideInBreadcrumb   Boolean       @default(false)
+  hideInTab          Boolean       @default(false)
+  iframeSrc          String?       @db.VarChar(500) // iframe地址
+  link               String?       @db.VarChar(500) // 外链地址
+  activePath         String?       @db.VarChar(500) // 激活路径
+  badge              String?       @db.VarChar(50) // 徽标内容
+  badgeType          BadgeType?
+  badgeVariants      BadgeVariants?
+  treePath           String?       @default("") @db.VarChar(1000) // 物化路径
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  // 自关联
+  parent   Menu?  @relation("MenuTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Menu[] @relation("MenuTree")
+
+  // 角色关联
+  roles RoleMenu[]
+
+  @@index([parentId])
+  @@index([status])
+  @@index([order])
+  @@index([authCode])
+  @@map("menus")
+}
+
+/// 角色-菜单关联表
+model RoleMenu {
+  roleId    String   @db.VarChar(36)
+  menuId    String   @db.VarChar(36)
+  grantedAt DateTime @default(now())
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, menuId])
+  @@index([menuId])
+  @@map("role_menus")
+}
+
+// ==================== 日志模块 ====================
+
+/// 操作日志表
+model OperLog {
+  id            String   @id @default(uuid()) @db.VarChar(36)
+  title         String   @db.VarChar(100) // 模块标题
+  businessType  Int      @default(0) @db.TinyInt // 业务类型
+  method        String?  @db.VarChar(200) // 请求方法
+  requestMethod String?  @db.VarChar(10) // HTTP方法
+  operName      String?  @db.VarChar(50) // 操作人员
+  deptName      String?  @db.VarChar(100) // 部门名称
+  operUrl       String?  @db.VarChar(500) // 请求URL
+  operIp        String?  @db.VarChar(50) // 请求IP
+  operLocation  String?  @db.VarChar(200) // 操作地点
+  operParam     String?  @db.Text // 请求参数
+  jsonResult    String?  @db.Text // 返回结果
+  status        Int      @default(0) @db.TinyInt // 操作状态
+  errorMsg      String?  @db.Text // 错误消息
+  operTime      DateTime @default(now()) // 操作时间
+  costTime      Int      @default(0) // 耗时(ms)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([operTime])
+  @@index([title])
+  @@index([operName])
+  @@index([businessType])
+  @@index([status])
+  @@map("oper_logs")
+}

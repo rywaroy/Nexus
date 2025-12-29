@@ -17,28 +17,28 @@ import { BusinessTypeEnum } from './entities/oper-log.entity';
 
 @ApiTags('操作日志管理')
 @ApiBearerAuth()
-@Controller('monitor/operlog')
+@Controller('system/log')
 @UseGuards(AuthGuard, PermissionGuard)
 export class OperLogController {
   constructor(private readonly operLogService: OperLogService) { }
 
   @ApiOperation({ summary: '查询操作日志列表' })
   @Get('list')
-  @RequirePermission('monitor:operlog:list')
+  @RequirePermission('system:log:list')
   async findAll(@Query() queryOperLogDto: QueryOperLogDto) {
     return this.operLogService.findAll(queryOperLogDto);
   }
 
   @ApiOperation({ summary: '查询操作日志详情' })
   @Get(':id')
-  @RequirePermission('monitor:operlog:query')
+  @RequirePermission('system:log:query')
   async findOne(@Param('id') id: string) {
     return this.operLogService.findOne(id);
   }
 
   @ApiOperation({ summary: '清空操作日志' })
   @Delete('clean')
-  @RequirePermission('monitor:operlog:delete')
+  @RequirePermission('system:log:delete')
   // 注意：清空操作日志不记录日志，避免循环
   async clean() {
     return this.operLogService.clean();
@@ -46,7 +46,7 @@ export class OperLogController {
 
   @ApiOperation({ summary: '删除操作日志' })
   @Delete(':ids')
-  @RequirePermission('monitor:operlog:delete')
+  @RequirePermission('system:log:delete')
   @Log({ title: '操作日志管理', businessType: BusinessTypeEnum.DELETE })
   async remove(@Param('ids') ids: string) {
     const idArray = ids.split(',').filter((id) => id.trim());

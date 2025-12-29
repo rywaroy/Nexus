@@ -17,7 +17,7 @@ export class LoggingInterceptor implements NestInterceptor {
       tap(() => {
         const { method, path, user, query, body } = request;
         logger.info(
-          `${method} ${path} ${user && (user as any)._id.toString()} ${JSON.stringify(query)}  ${JSON.stringify(body)}`,
+          `${method} ${path} ${user && (user as any).id} ${JSON.stringify(query)}  ${JSON.stringify(body)}`,
         );
       }),
     );

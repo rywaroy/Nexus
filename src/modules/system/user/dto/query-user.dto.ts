@@ -2,12 +2,12 @@ import { Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
-  IsMongoId,
   IsOptional,
   IsPositive,
   IsString,
   Min,
 } from 'class-validator';
+import { IsId } from '@/common/decorators/is-id.decorator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -50,7 +50,7 @@ export class QueryUserDto {
   status?: number;
 
   @IsOptional()
-  @IsMongoId()
+  @IsId({ message: '部门ID格式不正确' })
   @ApiPropertyOptional({ description: '部门ID' })
   deptId?: string;
 }

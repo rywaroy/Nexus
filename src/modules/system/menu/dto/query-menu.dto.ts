@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsIn, IsMongoId, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsId } from '@/common/decorators/is-id.decorator';
 import { MenuType } from '../entities/menu.entity';
 
 export class QueryMenuDto {
@@ -26,6 +27,6 @@ export class QueryMenuDto {
 
   /** 父级菜单ID */
   @IsOptional()
-  @IsMongoId()
+  @IsId({ message: '父级菜单ID格式不正确' })
   parentId?: string;
 }

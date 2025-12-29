@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MongooseModule } from '@nestjs/mongoose';
 import { JwtModule } from '@nestjs/jwt';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -13,6 +12,7 @@ import { RoleModule } from './modules/system/role/role.module';
 import { DeptModule } from './modules/system/dept/dept.module';
 import { OperLogModule } from './modules/system/oper-log/oper-log.module';
 import { PermissionModule } from './common/modules/permission.module';
+import { PrismaModule } from './common/modules/prisma';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation';
 
@@ -37,19 +37,9 @@ import { validationSchema } from './config/validation';
       },
       inject: [ConfigService],
     }),
+    // Prisma 全局模块（替代 MongooseModule）
+    PrismaModule,
     UserModule,
-    MongooseModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => {
-        const mongodb = configService.get('mongodb');
-        return {
-          uri: `mongodb://${mongodb.host}:${mongodb.port}/${mongodb.database}`,
-          user: mongodb.user,
-          pass: mongodb.password,
-        };
-      },
-      inject: [ConfigService],
-    }),
     AuthModule,
     FileModule,
     RedisModule,
