@@ -41,6 +41,18 @@ class ResetPasswordDto {
   password: string;
 }
 
+/** 修改密码 DTO */
+class ChangePasswordDto {
+  @IsString()
+  @IsNotEmpty({ message: '请输入旧密码' })
+  oldPassword: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Length(6, 20, { message: '密码长度必须在 6-20 位之间' })
+  newPassword: string;
+}
+
 /**
  * 用户基础接口（注册、获取当前用户信息）
  * 路由前缀：/api/user
@@ -71,6 +83,18 @@ export class UserController {
   @ApiOperation({ summary: '用户注册' })
   register(@Body() dto: RegisterUserDto) {
     return this.userService.register(dto);
+  }
+
+  /**
+   * 修改当前用户密码
+   * PUT /api/user/change-password
+   */
+  @UseGuards(AuthGuard)
+  @Put('change-password')
+  @Log({ title: '修改密码', businessType: BusinessTypeEnum.UPDATE, isSaveRequestData: false })
+  @ApiOperation({ summary: '修改当前用户密码' })
+  changePassword(@Request() req, @Body() dto: ChangePasswordDto) {
+    return this.userService.changePassword(req.user.id, dto.oldPassword, dto.newPassword);
   }
 }
 

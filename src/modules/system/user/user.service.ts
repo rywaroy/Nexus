@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -321,6 +322,33 @@ export class UserService {
     });
 
     return this.toResponse(updated);
+  };
+
+  /**
+   * 用户修改自己的密码
+   */
+  changePassword = async (
+    id: string,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<{ message: string }> => {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+    if (!isPasswordValid) {
+      throw new BadRequestException('旧密码错误');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    await this.prisma.user.update({
+      where: { id },
+      data: { password: await bcrypt.hash(newPassword, salt) },
+    });
+
+    return { message: '密码修改成功' };
   };
 
   /**
