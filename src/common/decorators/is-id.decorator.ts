@@ -3,7 +3,6 @@ import {
   ValidationOptions,
   ValidationArguments,
 } from 'class-validator';
-import { ConfigService } from '@nestjs/config';
 
 /**
  * 检查是否为有效的 MongoDB ObjectId（24位十六进制）
@@ -47,7 +46,7 @@ export function IsId(validationOptions?: ValidationOptions) {
           }
 
           // 根据环境变量判断数据库类型
-          const dbType = process.env.DATABASE_TYPE || 'postgres';
+          const dbType = process.env.DATABASE_TYPE || 'mongodb';
 
           if (dbType === 'mongodb') {
             return isMongoId(value);
@@ -56,7 +55,7 @@ export function IsId(validationOptions?: ValidationOptions) {
           }
         },
         defaultMessage(args: ValidationArguments) {
-          const dbType = process.env.DATABASE_TYPE || 'postgres';
+          const dbType = process.env.DATABASE_TYPE || 'mongodb';
           const expectedFormat =
             dbType === 'mongodb' ? 'MongoDB ObjectId' : 'UUID';
           return `${args.property} 格式不正确，期望 ${expectedFormat} 格式`;
