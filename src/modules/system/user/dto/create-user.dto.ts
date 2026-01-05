@@ -72,4 +72,14 @@ export class CreateUserDto {
     type: String,
   })
   roles?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsId({ each: true, message: '岗位ID格式不正确' })
+  @ApiPropertyOptional({
+    description: '岗位ID数组',
+    isArray: true,
+    type: String,
+  })
+  postIds?: string[];
 }

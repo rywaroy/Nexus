@@ -53,4 +53,9 @@ export class QueryUserDto {
   @IsId({ message: '部门ID格式不正确' })
   @ApiPropertyOptional({ description: '部门ID' })
   deptId?: string;
+
+  @IsOptional()
+  @IsId({ message: '岗位ID格式不正确' })
+  @ApiPropertyOptional({ description: '岗位ID' })
+  postId?: string;
 }

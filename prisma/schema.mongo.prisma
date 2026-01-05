@@ -56,6 +56,7 @@ model User {
   // 关联
   dept  Dept?      @relation(fields: [deptId], references: [id], onDelete: SetNull)
   roles UserRole[]
+  posts UserPost[]
 
   @@index([deptId])
   @@index([status])
@@ -181,6 +182,42 @@ model RoleMenu {
   @@unique([roleId, menuId])
   @@index([menuId])
   @@map("role_menus")
+}
+
+// ==================== 岗位模块 ====================
+
+/// 岗位表
+model Post {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  postCode  String   @unique // 岗位编码
+  postName  String // 岗位名称
+  postSort  Int      @default(0) // 排序
+  status    Int      @default(0) // 0-启用，1-停用
+  remark    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  users UserPost[]
+
+  @@index([status])
+  @@index([postSort])
+  @@map("posts")
+}
+
+/// 用户-岗位关联表
+model UserPost {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  postId     String   @db.ObjectId
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([postId])
+  @@map("user_posts")
 }
 
 // ==================== 日志模块 ====================

@@ -181,13 +181,64 @@ const SYSTEM_MENUS: MenuData[] = [
         ],
       },
       {
+        name: 'SystemPost',
+        title: 'system.post.title',
+        path: 'post',
+        component: 'system/post/list',
+        type: MenuType.MENU,
+        icon: 'mdi:briefcase-outline',
+        order: 3,
+        children: [
+          {
+            name: 'SystemPostList',
+            title: 'system.post.list',
+            path: '#',
+            type: MenuType.BUTTON,
+            authCode: 'system:post:list',
+            order: 1,
+          },
+          {
+            name: 'SystemPostQuery',
+            title: 'system.post.query',
+            path: '#',
+            type: MenuType.BUTTON,
+            authCode: 'system:post:query',
+            order: 2,
+          },
+          {
+            name: 'SystemPostCreate',
+            title: 'system.post.create',
+            path: '#',
+            type: MenuType.BUTTON,
+            authCode: 'system:post:create',
+            order: 3,
+          },
+          {
+            name: 'SystemPostUpdate',
+            title: 'system.post.update',
+            path: '#',
+            type: MenuType.BUTTON,
+            authCode: 'system:post:update',
+            order: 4,
+          },
+          {
+            name: 'SystemPostDelete',
+            title: 'system.post.delete',
+            path: '#',
+            type: MenuType.BUTTON,
+            authCode: 'system:post:delete',
+            order: 5,
+          },
+        ],
+      },
+      {
         name: 'SystemRole',
         title: 'system.role.title',
         path: 'role',
         component: 'system/role/list',
         type: MenuType.MENU,
         icon: 'mdi:account-group',
-        order: 3,
+        order: 4,
         children: [
           {
             name: 'SystemRoleList',
@@ -238,7 +289,7 @@ const SYSTEM_MENUS: MenuData[] = [
         component: 'system/user/list',
         type: MenuType.MENU,
         icon: 'mdi:account-outline',
-        order: 4,
+        order: 5,
         children: [
           {
             name: 'SystemUserList',
@@ -297,7 +348,7 @@ const SYSTEM_MENUS: MenuData[] = [
         component: 'system/log/list',
         type: MenuType.MENU,
         icon: 'mdi:clipboard-text-clock-outline',
-        order: 5,
+        order: 6,
         children: [
           {
             name: 'SystemLogList',

@@ -19,6 +19,7 @@ export interface UserResponseDto {
   username: string;
   nickName: string;
   roles: string[];
+  postIds: string[];
   email?: string;
   phone?: string;
   avatar?: string;
@@ -73,6 +74,13 @@ export class UserService {
             roleId: role.id,
           })),
         },
+        posts: dto.postIds?.length
+          ? {
+              create: dto.postIds.map((postId) => ({
+                postId,
+              })),
+            }
+          : undefined,
       },
       include: {
         roles: {
@@ -80,6 +88,7 @@ export class UserService {
             role: true,
           },
         },
+        posts: true,
       },
     });
 
@@ -118,6 +127,7 @@ export class UserService {
             role: true,
           },
         },
+        posts: true,
       },
     });
 
@@ -136,6 +146,7 @@ export class UserService {
       phone,
       status,
       deptId,
+      postId,
     } = query;
 
     const where: any = {};
@@ -157,6 +168,14 @@ export class UserService {
     if (deptId) {
       where.deptId = deptId;
     }
+    // 岗位筛选
+    if (postId) {
+      where.posts = {
+        some: {
+          postId,
+        },
+      };
+    }
 
     const skip = (page - 1) * pageSize;
 
@@ -172,6 +191,7 @@ export class UserService {
               role: true,
             },
           },
+          posts: true,
         },
       }),
       this.prisma.user.count({ where }),
@@ -195,6 +215,7 @@ export class UserService {
             role: true,
           },
         },
+        posts: true,
       },
     });
 
@@ -237,6 +258,17 @@ export class UserService {
       };
     }
 
+    // 处理岗位更新
+    let postsUpdate: any = undefined;
+    if (dto.postIds !== undefined) {
+      postsUpdate = {
+        deleteMany: {},
+        create: dto.postIds.map((postId) => ({
+          postId,
+        })),
+      };
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
@@ -248,6 +280,7 @@ export class UserService {
         remark: dto.remark,
         deptId: dto.deptId === '' ? null : dto.deptId,
         roles: rolesUpdate,
+        posts: postsUpdate,
       },
       include: {
         roles: {
@@ -255,6 +288,7 @@ export class UserService {
             role: true,
           },
         },
+        posts: true,
       },
     });
 
@@ -288,6 +322,7 @@ export class UserService {
               role: true,
             },
           },
+          posts: true,
         },
       })
       .catch(() => null);
@@ -318,6 +353,7 @@ export class UserService {
             role: true,
           },
         },
+        posts: true,
       },
     });
 
@@ -363,6 +399,7 @@ export class UserService {
             role: true,
           },
         },
+        posts: true,
       },
     });
   };
@@ -379,12 +416,14 @@ export class UserService {
    */
   private toResponse = (user: any): UserResponseDto => {
     const roles = user.roles?.map((ur: any) => ur.role?.name).filter(Boolean) || [];
+    const postIds = user.posts?.map((up: any) => up.postId).filter(Boolean) || [];
 
     return {
       id: user.id,
       username: user.username,
       nickName: user.nickName,
       roles,
+      postIds,
       email: user.email || undefined,
       phone: user.phone || undefined,
       avatar: user.avatar || undefined,
