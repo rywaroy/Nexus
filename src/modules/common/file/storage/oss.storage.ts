@@ -32,7 +32,10 @@ export class OssStorage implements IStorageStrategy {
     this.logger.log(`OSS 存储已初始化，Bucket: ${ossConfig.bucket}`);
   }
 
-  async upload(file: Express.Multer.File): Promise<UploadResult> {
+  async upload(
+    file: Express.Multer.File,
+    module: string,
+  ): Promise<UploadResult> {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -42,7 +45,7 @@ export class OssStorage implements IStorageStrategy {
     const extension = path.extname(file.originalname);
     const uuid = uuidv4();
     const filename = `${uuid}${extension}`;
-    const ossPath = `${this.dir}/${dateFolder}/${filename}`;
+    const ossPath = `${this.dir}/${module}/${dateFolder}/${filename}`;
 
     // 上传到 OSS
     const result = await this.client.put(ossPath, file.buffer);

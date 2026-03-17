@@ -13,10 +13,14 @@ export class FileService {
   /**
    * 处理上传的文件，返回文件信息
    * @param file 上传的文件
+   * @param module 业务模块
    * @returns 文件信息
    */
-  async processUploadedFile(file: Express.Multer.File): Promise<FileInfoDto> {
-    const result = await this.storage.upload(file);
+  async processUploadedFile(
+    file: Express.Multer.File,
+    module: string,
+  ): Promise<FileInfoDto> {
+    const result = await this.storage.upload(file, module);
     return {
       filename: result.filename,
       originalname: result.originalname,
@@ -32,11 +36,15 @@ export class FileService {
   /**
    * 处理多个上传的文件，返回文件信息数组
    * @param files 上传的文件数组
+   * @param module 业务模块
    * @returns 文件信息数组
    */
   async processUploadedFiles(
     files: Express.Multer.File[],
+    module: string,
   ): Promise<FileInfoDto[]> {
-    return Promise.all(files.map((file) => this.processUploadedFile(file)));
+    return Promise.all(
+      files.map((file) => this.processUploadedFile(file, module)),
+    );
   }
 }

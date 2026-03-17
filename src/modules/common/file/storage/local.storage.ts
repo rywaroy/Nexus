@@ -9,13 +9,16 @@ import { IStorageStrategy, UploadResult } from './storage.interface';
 export class LocalStorage implements IStorageStrategy {
   constructor(private readonly configService: ConfigService) {}
 
-  async upload(file: Express.Multer.File): Promise<UploadResult> {
+  async upload(
+    file: Express.Multer.File,
+    module: string,
+  ): Promise<UploadResult> {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const dateFolder = `${year}${month}${day}`;
-    const uploadDir = `uploads/${dateFolder}`;
+    const uploadDir = path.join('uploads', module, dateFolder);
 
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });

@@ -8,7 +8,7 @@ export interface UploadResult {
 }
 
 export interface IStorageStrategy {
-  upload(file: Express.Multer.File): Promise<UploadResult>;
+  upload(file: Express.Multer.File, module: string): Promise<UploadResult>;
 }
 
 export const STORAGE_STRATEGY = 'STORAGE_STRATEGY';

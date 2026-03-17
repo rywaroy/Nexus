@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Post,
   UseInterceptors,
@@ -13,6 +14,7 @@ import { FileValidationPipe } from './filevalidation.pipe';
 import { FileInfoDto } from './dto/file-info.dto';
 import { FilesInfoDto } from './dto/files-info.dto';
 import { ApiResponse } from '@/common/decorator/api-response.decorator';
+import { UploadFileBodyDto } from './dto/upload-file-body.dto';
 
 @ApiTags('文件管理')
 @Controller('file')
@@ -46,7 +48,12 @@ export class FileController {
     type: 'multipart/form-data',
     schema: {
       type: 'object',
+      required: ['module', 'file'],
       properties: {
+        module: {
+          type: 'string',
+          description: '业务模块标识，例如 avatar',
+        },
         file: {
           type: 'string',
           format: 'binary',
@@ -58,8 +65,9 @@ export class FileController {
   @ApiResponse(FileInfoDto, '文件上传成功')
   async uploadFile(
     @UploadedFile(FileValidationPipe) file: Express.Multer.File,
+    @Body() body: UploadFileBodyDto,
   ): Promise<FileInfoDto> {
-    return this.fileService.processUploadedFile(file);
+    return this.fileService.processUploadedFile(file, body.module);
   }
 
   @UseInterceptors(
@@ -76,7 +84,12 @@ export class FileController {
     type: 'multipart/form-data',
     schema: {
       type: 'object',
+      required: ['module', 'files'],
       properties: {
+        module: {
+          type: 'string',
+          description: '业务模块标识，例如 avatar',
+        },
         files: {
           type: 'array',
           items: {
@@ -91,7 +104,8 @@ export class FileController {
   @ApiResponse(FilesInfoDto, '文件上传成功')
   async uploadFiles(
     @UploadedFiles(FileValidationPipe) files: Array<Express.Multer.File>,
+    @Body() body: UploadFileBodyDto,
   ): Promise<FileInfoDto[]> {
-    return this.fileService.processUploadedFiles(files);
+    return this.fileService.processUploadedFiles(files, body.module);
   }
 }
