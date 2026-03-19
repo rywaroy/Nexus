@@ -12,6 +12,7 @@ import { RoleModule } from './modules/system/role/role.module';
 import { DeptModule } from './modules/system/dept/dept.module';
 import { OperLogModule } from './modules/system/oper-log/oper-log.module';
 import { PostModule } from './modules/system/post/post.module';
+import { DictModule } from './modules/system/dict/dict.module';
 import { PermissionModule } from './common/modules/permission.module';
 import { PrismaModule } from './common/modules/prisma';
 import configuration from './config/configuration';
@@ -49,6 +50,7 @@ import { validationSchema } from './config/validation';
     DeptModule,
     OperLogModule,
     PostModule,
+    DictModule,
     PermissionModule,
   ],
   controllers: [AppController],

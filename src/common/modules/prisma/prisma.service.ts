@@ -56,6 +56,8 @@ export class PrismaService
     const models = [
       'userRole',
       'roleMenu',
+      'dictData',
+      'dictType',
       'operLog',
       'user',
       'role',

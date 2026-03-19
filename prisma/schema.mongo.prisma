@@ -220,6 +220,48 @@ model UserPost {
   @@map("user_posts")
 }
 
+// ==================== 字典模块 ====================
+
+/// 字典类型表
+model DictType {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  dictName  String
+  dictType  String   @unique
+  status    Int      @default(0)
+  remark    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  data DictData[]
+
+  @@index([status])
+  @@map("dict_types")
+}
+
+/// 字典数据表
+model DictData {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  typeId    String   @db.ObjectId
+  dictLabel String
+  dictValue String
+  dictSort  Int      @default(0)
+  cssClass  String?
+  listClass String?
+  isDefault Boolean  @default(false)
+  status    Int      @default(0)
+  remark    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  type DictType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+
+  @@unique([typeId, dictLabel])
+  @@index([typeId])
+  @@index([status])
+  @@index([dictSort])
+  @@map("dict_data")
+}
+
 // ==================== 日志模块 ====================
 
 /// 操作日志表
