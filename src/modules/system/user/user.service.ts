@@ -147,6 +147,7 @@ export class UserService {
       status,
       deptId,
       postId,
+      roleId,
     } = query;
 
     const where: any = {};
@@ -173,6 +174,13 @@ export class UserService {
       where.posts = {
         some: {
           postId,
+        },
+      };
+    }
+    if (roleId) {
+      where.roles = {
+        some: {
+          roleId,
         },
       };
     }
