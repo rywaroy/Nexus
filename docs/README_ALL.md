@@ -208,6 +208,8 @@ import { AuthGuard } from '@/common/guards/auth.guard';
 
 4.  **同步数据库结构:**
 
+    `db push` 仅用于空白或可丢弃本地库。已有有效数据的本地、测试、预发、生产库必须按 `docs/prisma-change-standard.md` 使用 Prisma Migrate。
+
     ```bash
     npx prisma db push
     ```
@@ -240,6 +242,7 @@ import { AuthGuard } from '@/common/guards/auth.guard';
 pnpm prisma:mysql  # 或 prisma:postgres / prisma:mongo
 
 # 同步数据库结构
+# 仅空白或可丢弃本地库使用 db push；已有数据的库按 docs/prisma-change-standard.md 使用 migration
 npx prisma db push
 
 # 初始化数据
@@ -502,6 +505,9 @@ DATABASE_URL="mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/nexus?r
    ```
 
 3. **同步数据库结构**
+
+   `db push` 仅用于空白或可丢弃本地库。已有有效数据的本地、测试、预发、生产库必须按 `docs/prisma-change-standard.md` 使用 Prisma Migrate。
+
    ```bash
    npx prisma db push
    ```

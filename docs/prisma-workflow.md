@@ -1,6 +1,12 @@
 # Prisma 工作流指南
 
-本文档描述了在 Nexus 项目中使用 Prisma 的常见操作流程。
+本文档描述 Prisma 的日常命令和执行流程。数据库变更的强制规范见：
+
+```text
+docs/prisma-change-standard.md
+```
+
+凡是涉及已有数据库的表结构或数据变更，必须先按该规范执行。
 
 ## 项目 Schema 文件
 
@@ -18,9 +24,9 @@
 
 ## 修改表结构后的操作
 
-### MongoDB（当前使用）
+### MongoDB
 
-MongoDB 是 schemaless 数据库，不需要迁移。修改 schema 后只需重新生成 Prisma Client：
+MongoDB 是 schemaless 数据库，通常不需要 SQL migration。修改 schema 后重新生成 Prisma Client：
 
 ```bash
 # 1. 修改 prisma/schema.mongo.prisma
@@ -30,18 +36,28 @@ pnpm prisma:mongo
 
 ### PostgreSQL / MySQL
 
-关系型数据库需要同步 schema 到数据库：
+关系型数据库必须使用 Prisma Migrate 保留迁移历史。
+
+开发环境生成迁移：
 
 ```bash
-# 方式一：快速同步（开发阶段，不保留迁移历史）
-npx prisma db push
+pnpm prisma:mysql
+npx prisma migrate dev --name describe_change --create-only
+```
 
-# 方式二：创建迁移（推荐，保留迁移历史）
-npx prisma migrate dev --name "描述本次修改"
+审查生成的 `migration.sql` 后，本地开发库执行：
 
-# 方式三：生产环境部署
+```bash
+npx prisma migrate dev
+```
+
+测试、预发、生产环境执行：
+
+```bash
 npx prisma migrate deploy
 ```
+
+`npx prisma db push` 只允许用于空的、可随时丢弃的本地实验库。任何已有有效数据的数据库都禁止使用。
 
 ---
 
@@ -50,7 +66,7 @@ npx prisma migrate deploy
 | 命令 | 用途 |
 |------|------|
 | `npx prisma generate` | 生成 Prisma Client（更新 TypeScript 类型） |
-| `npx prisma db push` | 将 schema 推送到数据库（开发用，不创建迁移文件） |
+| `npx prisma db push` | 仅空白或可丢弃本地库使用，不创建迁移文件 |
 | `npx prisma migrate dev` | 创建并应用迁移（开发用） |
 | `npx prisma migrate deploy` | 应用迁移（生产环境） |
 | `npx prisma studio` | 打开数据库可视化管理界面 |
@@ -68,12 +84,14 @@ npx prisma migrate deploy
 # 1. 编辑 schema 文件，添加新字段
 # 例如在 User 模型中添加 avatar 字段
 
-# 2. 重新生成 Client
-pnpm prisma:mongo  # MongoDB
-# 或
-npx prisma migrate dev --name "add_avatar_to_user"  # PostgreSQL/MySQL
+# 2. MySQL / PostgreSQL：生成迁移，先审查 SQL
+pnpm prisma:mysql
+npx prisma migrate dev --name add_avatar_to_user --create-only
 
-# 3. 更新业务代码使用新字段
+# 3. 审查迁移后执行
+npx prisma migrate dev
+
+# 4. 更新业务代码使用新字段
 ```
 
 ### 添加新模型（表）
@@ -89,11 +107,25 @@ model NewModel {
   @@map("new_models")
 }
 
-# 2. 重新生成 Client
-pnpm prisma:mongo
+# 2. MySQL / PostgreSQL：生成迁移，先审查 SQL
+pnpm prisma:mysql
+npx prisma migrate dev --name add_new_model --create-only
 
-# 3. 创建对应的 Service、Controller 等
+# 3. 审查迁移后执行
+npx prisma migrate dev
+
+# 4. 创建对应的 Service、Controller 等
 ```
+
+### 补充或修复数据
+
+优先写幂等脚本或 SQL patch：
+
+```text
+prisma/patches/YYYY-MM-DD-short-description.mysql.sql
+```
+
+补丁必须包含执行前检查、幂等保护和执行后验证。复杂回填使用 TypeScript 脚本通过 Prisma Client 分批处理。
 
 ---
 
@@ -114,18 +146,35 @@ npx prisma generate
 
 **解决**：
 ```bash
-# 查看差异
+# 查看差异，不直接改库
 npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma
-
-# 同步到数据库
-npx prisma db push
 ```
+
+已有数据的数据库必须通过 migration 修正，不能用 `db push` 强行同步。
 
 ### 3. 重置开发数据库
 
 ```bash
 # 删除所有数据并重新应用迁移
 npx prisma migrate reset
+```
+
+只允许在可丢弃的本地开发库执行。
+
+### 4. P3005：数据库非空但没有迁移历史
+
+生产或已有库第一次接入 Prisma Migrate 时可能出现：
+
+```text
+Error: P3005
+The database schema is not empty.
+```
+
+处理方式是 baseline，不是删表：
+
+```bash
+npx prisma migrate resolve --applied <baseline_migration_folder_name>
+npx prisma migrate deploy
 ```
 
 ---

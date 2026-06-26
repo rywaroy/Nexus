@@ -22,8 +22,16 @@
    ```
 
 3. **同步数据库结构**
+
+   - 空白或可丢弃的本地实验库可以使用 `db push`。
+   - 已有有效数据的本地、测试、预发、生产库必须按 `docs/prisma-change-standard.md` 使用 Prisma Migrate。
+
    ```bash
+   # 仅空白或可丢弃本地库
    npx prisma db push
+
+   # 已有数据的 MySQL / PostgreSQL
+   npx prisma migrate deploy
    ```
 
 4. **重新初始化数据（如需要）**

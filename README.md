@@ -76,6 +76,7 @@ JWT_EXPIRES_IN=24h
 pnpm prisma:postgres  # 或 prisma:mysql / prisma:mongo
 
 # 同步数据库结构
+# 仅空白或可丢弃本地库使用 db push；已有数据的库按 docs/prisma-change-standard.md 使用 migration
 npx prisma db push
 
 # 初始化管理员数据（可选）
