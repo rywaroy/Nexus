@@ -6,6 +6,7 @@ export default () => ({
   },
   file: {
     maxSizeMB: parseInt(process.env.FILE_MAX_SIZE_MB) || 10,
+    uploadRoot: process.env.UPLOAD_ROOT || 'uploads',
   },
   jwt: {
     secret: process.env.JWT_SECRET || 'yourSecretKey',

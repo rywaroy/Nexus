@@ -5,6 +5,8 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { IStorageStrategy, UploadResult } from './storage.interface';
 
+const PUBLIC_UPLOAD_PREFIX = 'uploads';
+
 @Injectable()
 export class LocalStorage implements IStorageStrategy {
   constructor(private readonly configService: ConfigService) {}
@@ -18,7 +20,9 @@ export class LocalStorage implements IStorageStrategy {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const dateFolder = `${year}${month}${day}`;
-    const uploadDir = path.join('uploads', module, dateFolder);
+    const uploadRoot = this.getUploadRoot();
+    const uploadDir = path.join(uploadRoot, module, dateFolder);
+    const publicDir = path.posix.join(PUBLIC_UPLOAD_PREFIX, module, dateFolder);
 
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -28,6 +32,7 @@ export class LocalStorage implements IStorageStrategy {
     const uuid = uuidv4();
     const filename = `${uuid}${extension}`;
     const filePath = path.join(uploadDir, filename);
+    const publicPath = path.posix.join(publicDir, filename);
 
     // 如果文件是通过 memoryStorage 上传的，需要写入磁盘
     if (file.buffer) {
@@ -35,13 +40,14 @@ export class LocalStorage implements IStorageStrategy {
     } else if (file.path) {
       // 如果已经在磁盘上，直接使用
       // 这种情况下 file.path 已经是最终路径
+      const publicPath = this.toPublicPath(file.path);
       return {
         filename: file.filename || filename,
         originalname: file.originalname,
         mimetype: file.mimetype,
         size: file.size,
-        path: file.path,
-        url: this.generateUrl(file.path),
+        path: publicPath,
+        url: this.generateUrl(publicPath),
       };
     }
 
@@ -50,9 +56,47 @@ export class LocalStorage implements IStorageStrategy {
       originalname: file.originalname,
       mimetype: file.mimetype,
       size: file.size,
-      path: filePath,
-      url: this.generateUrl(filePath),
+      path: publicPath,
+      url: this.generateUrl(publicPath),
     };
+  }
+
+  private getUploadRoot(): string {
+    return path.resolve(
+      this.configService.get<string>('file.uploadRoot') || PUBLIC_UPLOAD_PREFIX,
+    );
+  }
+
+  private toPublicPath(filePath: string): string {
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const normalizedUploadRoot = this.getUploadRoot().replace(/\\/g, '/');
+
+    if (
+      normalizedPath === normalizedUploadRoot ||
+      normalizedPath.startsWith(`${normalizedUploadRoot}/`)
+    ) {
+      const relativePath = normalizedPath
+        .slice(normalizedUploadRoot.length)
+        .replace(/^\/+/, '');
+
+      return path.posix.join(PUBLIC_UPLOAD_PREFIX, relativePath);
+    }
+
+    const marker = `/${PUBLIC_UPLOAD_PREFIX}/`;
+    const markerIndex = normalizedPath.lastIndexOf(marker);
+
+    if (markerIndex >= 0) {
+      return normalizedPath.slice(markerIndex + 1);
+    }
+
+    if (normalizedPath.startsWith(`${PUBLIC_UPLOAD_PREFIX}/`)) {
+      return normalizedPath;
+    }
+
+    return path.posix.join(
+      PUBLIC_UPLOAD_PREFIX,
+      path.posix.basename(normalizedPath),
+    );
   }
 
   private generateUrl(filePath: string): string {

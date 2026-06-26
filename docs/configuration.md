@@ -41,6 +41,12 @@ REDIS_DB=0
 # 应用配置
 APP_PORT=3000
 NODE_ENV=development
+APP_BASE_URL=http://localhost:3000
+
+# 文件上传
+FILE_MAX_SIZE_MB=10
+# 线上建议使用不会被发版覆盖的绝对路径，例如 /data/nexus/uploads
+UPLOAD_ROOT=uploads
 ```
 
 ## 配置工厂 (`src/config/configuration.ts`)
@@ -52,6 +58,11 @@ export default () => ({
   app: {
     port: parseInt(process.env.APP_PORT) || 3000,
     nodeEnv: process.env.NODE_ENV || 'development',
+    baseUrl: process.env.APP_BASE_URL || 'http://localhost:3000',
+  },
+  file: {
+    maxSizeMB: parseInt(process.env.FILE_MAX_SIZE_MB) || 10,
+    uploadRoot: process.env.UPLOAD_ROOT || 'uploads',
   },
   jwt: {
     secret: process.env.JWT_SECRET || 'yourSecretKey',
@@ -88,6 +99,9 @@ export const validationSchema = Joi.object({
     .valid('development', 'production', 'test', 'online')
     .default('development'),
   APP_PORT: Joi.number().default(3000),
+  APP_BASE_URL: Joi.string().default('http://localhost:3000'),
+  UPLOAD_ROOT: Joi.string().default('uploads'),
+  FILE_MAX_SIZE_MB: Joi.number().default(10),
 
   // JWT
   JWT_SECRET: Joi.string().required(),
@@ -114,15 +128,15 @@ export const validationSchema = Joi.object({
 
 ```typescript
 @Module({
-    imports: [
-        ConfigModule.forRoot({
-            isGlobal: true,           // 全局模块，任何地方可注入 ConfigService
-            load: [configuration],     // 加载配置工厂
-            validationSchema,          // 启动时验证环境变量
-        }),
-        PrismaModule,
-        // ... 其他模块
-    ],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true, // 全局模块，任何地方可注入 ConfigService
+      load: [configuration], // 加载配置工厂
+      validationSchema, // 启动时验证环境变量
+    }),
+    PrismaModule,
+    // ... 其他模块
+  ],
 })
 export class AppModule {}
 ```
@@ -134,11 +148,29 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class SomeService {
-    constructor(private configService: ConfigService) {}
+  constructor(private configService: ConfigService) {}
 
-    someMethod() {
-        const jwtSecret = this.configService.get('jwt.secret');
-        const dbUrl = this.configService.get('database.url');
-    }
+  someMethod() {
+    const jwtSecret = this.configService.get('jwt.secret');
+    const dbUrl = this.configService.get('database.url');
+    const uploadRoot = this.configService.get('file.uploadRoot');
+  }
 }
+```
+
+## 上传目录配置
+
+`UPLOAD_ROOT` 是本地上传文件的真实保存目录。接口响应和静态资源访问仍统一使用 `uploads/...` 公共路径，应用启动时会把 `UPLOAD_ROOT` 挂载到 `/uploads/`：
+
+```typescript
+app.useStaticAssets(uploadRoot, {
+  prefix: '/uploads/',
+});
+```
+
+生产环境不要把 `UPLOAD_ROOT` 放在 `dist`、构建产物或发布包目录下，否则重新部署时容易误删历史上传文件。推荐放在 `/data/nexus/uploads`、`/var/lib/nexus/uploads` 等持久化目录，并提前创建目录和授权：
+
+```bash
+sudo mkdir -p /data/nexus/uploads
+sudo chown -R <node运行用户>:<node运行用户> /data/nexus/uploads
 ```
